@@ -1,0 +1,252 @@
+﻿SubmissionDate,SubmissionDate
+starttime,starttime
+endtime,endtime
+Designation of Supervisor,A2
+Others (Specify),A2_SP
+Name of the Institute (Big Bet),A3
+Others (Specify),A3_SP
+State,B1
+District,B2
+Block name,B2A
+Name of Sub Health Center (HSC/HWC),B4
+Name of ANM 1,B4_1
+Name of ANM 2,B4_2
+Name of the session venue,B5
+AWC Centre Code,B6
+Type of session venue,B7
+Date of visit,B8
+Has the session been held?,C1
+Is the session being held at the location shown in the microplan?,C2
+If the session has not been held then what is the reason?,C3
+Others (Specify),C3_SP
+Which health workers are available at the session site?,C4
+ANM(1),C4_A
+ANM(2),C4_B
+Hope,C4_C
+AWW,C4_D
+AWH Assistant,C4_E
+Is the U-WIN portal being used?,C5
+Is this session registered on U-WIN,C6
+Is the ANM registered on U-WIN?,C7
+Are e-vaccination certificates being generated after vaccination?,C8
+Is information being stored in the ANMOL App?,C9
+Which other members have participated in the session?,C10
+Members of VHSNC (other than the head),C10_A
+Health of Jeevika Village Organization,C10_B
+Sub-Committee Members,C10_C
+chief,C10_D
+PRI (other than Mukhiya),C10_E
+NGO,C10_F
+Volunteer,C10_G
+Media,C10_H
+Faith Leader,C10_I
+SHG,C10_J
+Others,C10_88
+ nobody,C10_99
+Others (Specify),C10_SP
+From whom did you get help regarding preparation or organization at the session venue?,C10_1
+Members of VHSNC (other than the head),C10_1_A
+Health of Jeevika Village Organization,C10_1_B
+Sub-Committee Members,C10_1_C
+chief,C10_1_D
+PRI (other than Mukhiya),C10_1_E
+NGO,C10_1_F
+Volunteer,C10_1_G
+Media,C10_1_H
+Faith Leader,C10_1_I
+SHG,C10_1_J
+Others,C10_1_88
+ nobody,C10_1_99
+Others (Specify),C10_1_SP
+Was the session supervised today by anyone from the Health or Social Welfare Department?,C11
+Who supervised the session today?,C11_1
+Dist. Officials Health,C11_1_A
+ Dist. Officials ICDs,C11_1_B
+MOIC,C11_1_C
+MO,C11_1_D
+CHO,C11_1_E
+BHM,C11_1_F
+BCM,C11_1_G
+CDPO,C11_1_H
+LS,C11_1_I
+Others,C11_1_88
+Is the survey register available on Health Day?,E1
+Have new born babies and new pregnant women been added to the survey register last month?,E1_1
+Is Duelist available on Health Day?,E2
+How many of these names are of teenagers?,E2_1
+How many of these names are of eligible couples?,E2_2
+How many women are due for TT-1 vaccination today?,E2_3
+How many babies are due for Pentavalent-1 vaccination today?,E2_4
+How many women are due for their 3rd/4th antenatal check-up (ANC) today?,E2_5
+Who brought the vaccine and consumables to today's session?,E3
+AVD,E3_A
+ANM,E3_B
+ASHA,E3_C
+AWW,E3_D
+Supervisor,E3_E
+Others,E3_88
+Others (Specify),E3_SP
+Is this session more than 1 hour away from the cold chain storage?,E4
+Which of the following is available at the session site?,G1
+TD,G1_A
+BCG,G1_B
+OPV,G1_C
+Rotavirus,G1_E
+Pneumococcal Conjugate (PCV),G1_F
+IPV,G1_G
+Pentavalent,G1_H
+MR,G1_I
+JE,G1_J
+Vit.A,G1_K
+DPT,G1_L
+What diluent is available at the session site?,G2
+Sodium chloride normal saline,G2_A
+Pyrogen free double distilled water,G2_B
+No one from above,G2_99
+Which of the following is available on the session? (Enter yes only for working machines),G3
+working weighing machine for adults,G3_A
+working weight machine for children,G3_B
+BP machine is working,G3_C
+The stethoscope is employed,G3_D
+Hemoglobin test kit,G3_E
+Glucometer,G3_F
+thermometer,G3_G
+working infantometer,G3_H
+working stadiometer,G3_I
+Other(specify),G3_88
+Others (Specify),G3_SP
+Reference table available to check nutritional status,G11
+Which of the following is available on the session? (Enter yes only if you can use it),G12
+The IFA's blue pill,G12_A
+The IFA's pink pill,G12_B
+The IFA's red pill,G12_C
+IFA syrup (for adults),G12_D
+IFA Syrup (for children),G12_E
+zinc tablet,G12_F
+Zinc syrup,G12_G
+Albendazole tablet/syrup,G12_H
+calcium tablet,G12_I
+Oral contraceptive pill (OCP),G12_J
+Emergency Contraceptive Pill (ECP),G12_K
+condom,G12_L
+urinestrip dipstick,G12_M
+urine pregnancy kit,G12_N
+Antara Injection,G12_O
+Is there adequate space available to ensure the personal privacy of the pregnant woman during ANC?,G21
+Soap and water facilities are available,G24
+Which of the following services are being provided for prenatal check-up,H1
+Weight measurement,H1_A
+Height measurement,H1_B
+BP check,H1_C
+Hemoglobin test,H1_D
+urine test,H1_E
+Sugar test,H1_F
+Other (specify),H1_88
+none of these,H1_99
+Not applicable,H1_77
+Others (Specify),H1_SP
+How many pregnant women's blood pressure did the ANM measure? Observe and enter the number.,H1BP
+How many pregnant women did the ANM identify with high blood pressure?,H1BP1
+How many pregnant women were referred by ANMs who were diagnosed with high blood pressure?,H1PB2
+How many pregnant women did the ANM take blood samples from to check for anemia? Observe and enter the number.,H1HB
+How many pregnant women were identified by the ANM as having anemia? Enter the number.,H1HB1
+How many pregnant women with anemia had moderate anemia?,H1HB_2
+How many pregnant women with anemia had severe anemia?,H1HB_3
+How many pregnant women with anemia were told they had moderate or severe anemia?,H1HB_4
+How many of the identified women were referred?,H1HB2
+What information is provided during prenatal counselling?,H2
+Importance of prenatal check-ups,H2_A
+Importance of tetanus vaccination,H2_B
+Importance of IFA,H2_C
+Importance of calcium,H2_D
+Information and important advice on danger signs during pregnancy,H2_E
+Preparing for childbirth,H2_F
+Importance of nutritional supplements,H2_G
+Other (specify),H2_88
+none of these,H2_99
+Others (Specify),H2_SP
+How many lactating mothers attended the session for postnatal check-up?,H3A
+Number,H3A_1
+"What is being done at the VHSND session, post-natal check-up?",H3
+fever check,H3_A
+excessive bleeding,H3_B
+stomach pain,H3_C
+blood test,H3_D
+none of these,H3_99
+ nine,H3_77
+How many lactating mothers did the ANM take blood samples to check for anemia? Observe and enter the number.,H3HB1_1
+How many lactating mothers did the ANM identify as anemic? Enter the number.,H3HB2_1
+How many of the lactating mothers with anemia had moderate anemia?,H3HB3_1
+How many of the lactating mothers with anemia had severe anemia?,H3HB4_1
+How many lactating mothers with anemia were told they had moderate or severe anemia?,H3HB1_4
+How many of the identified lactating mothers were referred?,H3HB1_5
+What information is provided during postnatal counselling?,H4
+postpartum hygiene,H4_A
+Importance of breastfeeding,H4_B
+Information on nutritious food,H4_C
+Essential care of the newborn,H4_D
+Routine vaccinations,H4_E
+Prevention of diarrhea and the importance of ORS,H4_F
+Identification and referral of sick children,H4_G
+family planning counseling,H4_H
+Other (specify),H4_88
+none of these,H4_99
+Others (Specify),H4_SP
+Whether red IFA tablets were distributed,H5
+Whether delivery was done at the time of antenatal check-up (for pregnant women),H5_1
+How many IFA tablets were being given to most pregnant women at one time?,H5_1_1
+Whether red IFA tablets were distributed after delivery (to lactating mothers),H5_2
+How many IFA tablets were being given to most lactating mothers at one time?,H5_2_1
+Are any services provided to the adolescent at the session site?,H6
+Whether blue IFA tablets were distributed at the session venue,H6_1
+How many pills are most adolescent girls being given at one time?,H6_1_1
+Are calcium tablets being distributed at the session site?,H7
+Is albendazole being distributed to pregnant women (in the second trimester)?,H8
+Are eligible couples present at the session venue as per the due list?,H9
+Are OCPs being distributed?,H10
+Is ECP being distributed?,H11
+Is breastfeeding counseling provided at the session?,H12
+Total number of Antara planted at VHSND site (Ask and observe),H12A
+Did the FLW discuss family planning and its importance with the beneficiaries?,H12B
+"Is the nutritional status of children aged 6 months to 5 years being assessed based on age, weight and length/height?",H13
+Are women with danger signs being identified and referred?,H14
+Are children with danger signs being identified and referred?,H15
+Are the above services being maintained in the MCP card?,H16
+Is the ANM cutting the syringe with a hub cutter after use?,H18
+"If not, the relevant reasons:",H19
+Is the ANM writing the date and time of opening on all opened vaccine vials?,H20
+Is the vaccinator using the diluted BCG/MR/JE vial after the prescribed period (4 hours)?,H21
+Are the 4 important messages being given to parents by the health worker?,H22
+Are health workers advising beneficiaries to wait for 30 minutes after vaccination?,H23
+Was tele-consultation done at the session site?,H24
+How many teleconsultations have been conducted by Spoke?,H25
+"If there was no consultation, what are the reasons for zero consultation?",H26
+Number of teleconsultations you attended during the session,H27
+"If needed, referral is also being done during teleconsultation.",H28
+How many new MCP cards are available at the session site?,H29
+Were any pregnant women registered today?,H30
+Is the information about the services being provided also being maintained in the register?,H31
+H32. So in which,H32
+RCH Register,H32_A
+Rough Register,H32_B
+Other (specify),H32_88
+Others (Specify),H32_SP
+PL/GF visited VHSND site – explained the importance of FP to the beneficiaries using reference material-1.,H33
+PL/GF visited VHSND site – explained the importance of FP to FLWs using reference material-1.,H34
+Is the information being maintained by ANM in the ANMOL App?,ANM1
+How many pregnant women are registered in the ANM dashboard of ANMOL App?,ANM2
+Number of pregnant women,ANM2_1
+How many children below 2 years of age are registered in the ANM dashboard of ANMOL App?,ANM3
+Number of children under 2 years of age,ANM3_1
+How many target couples (women aged 15 to 49 years) are registered in the ANM dashboard of ANMOL App?,ANM4
+Number of women aged 15 to 49,ANM4_1
+Are you indenting medicines through DVDMS (e-aushadhi)?,ANM5
+Is Enam distributing medicine through DVDMS (e-aushadhi)?,ANM6
+Are Asha workers conducting surveys through the m-ASHA App?,ASHA1
+How many families has Asha surveyed through the m-ASHA App?,ASHA2
+Number of families,ASHA2_1
+Is the Abha-ID of the beneficiaries being created at the session?,ASHA3
+Are you (Asha) requesting family planning materials through the FPLMIS app?,ASHA4
+Are you (Asha) distributing family planning material through FPLMIS app?,ASHA5
+Is Scan & Share available on the session?,New
+,remarks

@@ -1,0 +1,44 @@
+{
+  "name": "vhsnd-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "embed:templates": "node scripts/embed-templates.mjs",
+    "build:check-offline": "node scripts/check-offline.mjs",
+    "build:all": "npm run build && npm run build:check-offline && npm run embed:templates",
+    "ci": "npm run typecheck && npm run lint && npm run test && npm run build"
+  },
+  "dependencies": {
+    "docx-templates": "^4.15.0",
+    "html-to-image": "^1.11.13",
+    "idb-keyval": "^6.3.0",
+    "next": "16.3.6",
+    "pptxgenjs": "^4.0.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-dropzone": "^20.1.2",
+    "recharts": "^3.10.1",
+    "xlsx": "file:vendor/xlsx-0.20.3.tgz",
+    "zod": "^4.6.5",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.6",
+    "typescript": "^5",
+    "vitest": "^5.0.1"
+  },
+  "overrides": {
+    "image-size": "2.0.4"
+  }
+}
