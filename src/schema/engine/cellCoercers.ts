@@ -62,11 +62,13 @@ function valueToEpochMs(v: CellValue | Date): number | null {
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) {
     // ISO date-only: parse as UTC to avoid local-timezone day shifts.
     const [y, m, d] = t.split("-").map(Number);
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
     return Date.UTC(y, m - 1, d);
   }
   if (/^\d{4}-\d{2}-\d{2}[T ]/.test(t)) {
     const datePart = t.slice(0, 10);
     const [y, m, d] = datePart.split("-").map(Number);
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
     return Date.UTC(y, m - 1, d);
   }
   const ep = Date.parse(t);
