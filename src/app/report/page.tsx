@@ -6,7 +6,7 @@ import { AppShell } from "@/components/AppShell";
 import { AppDatasetPicker } from "@/components/DatasetPicker";
 import { cleanRowsToCsv, downloadBlob } from "@/export/csv";
 import { generatePptxReport } from "@/export/pptxReporter";
-import { renderDocxReport, base64ToBytes } from "@/export/docxReporter";
+import { renderDocxReport, base64ToBytes, type DocxChartImage } from "@/export/docxReporter";
 import { buildReportContext } from "@/export/reportContext";
 import { templates as embeddedTemplates } from "@/export/templates.generated";
 import { deriveCleanRows, unresolvedErrors } from "@/lib/derive";
@@ -100,7 +100,23 @@ export default function ReportPage() {
         if (!docTemplate) {
           throw new Error("No official .docx template has been installed yet. Drop one into templates/ and re-run npm run embed:templates.");
         }
-        const blob = await renderDocxReport(base64ToBytes(docTemplate.base64), context);
+        const chartImages = (
+          await Promise.all(
+            context.charts.map(async (c): Promise<DocxChartImage | null> => {
+              if (!c.blobKey) return null;
+              const blob = await loadChartBlob(c.blobKey);
+              if (!blob) return null;
+              const src = charts.find((x) => x.image?.blobKey === c.blobKey);
+              return {
+                blobKey: c.blobKey,
+                blob,
+                width: src?.image?.width ?? 0,
+                height: src?.image?.height ?? 0,
+              };
+            }),
+          )
+        ).filter((x): x is DocxChartImage => x !== null);
+        const blob = await renderDocxReport(base64ToBytes(docTemplate.base64), context, chartImages);
         downloadBlob(blob, `vhsnd-report-${new Date().toISOString().slice(0, 10)}.docx`);
       }
     } catch (err) {

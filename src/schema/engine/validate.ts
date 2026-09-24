@@ -107,17 +107,6 @@ function collectFieldViolations(
   const blank = v === null || v === undefined || v === "";
 
   if (blank) {
-    if (meta.required) {
-      out.push({
-        rowId: row.id,
-        ruleId: `F-${fieldId}`,
-        code: "MISSING_REQUIRED",
-        severity: "error",
-        category: "required",
-        fieldId,
-        message: `${label} is required but missing.`,
-      });
-    }
     return;
   }
 

@@ -6,9 +6,12 @@ import { toPng } from "html-to-image";
 import { AppShell } from "@/components/AppShell";
 import { AppDatasetPicker } from "@/components/DatasetPicker";
 import { ChartCanvas } from "@/components/ChartCanvas";
+import { ColorPicker } from "@/components/ColorPicker";
+import { InsightPanel } from "@/components/InsightPanel";
 import type { ChartConfig, ChartKind } from "@/contracts/chart";
 import { evaluateIndicator, suggestCharts, VHSND_INDICATORS } from "@/schema/indicators";
 import { deriveCleanRows } from "@/lib/derive";
+import { computeVizInsights, computeDatasetInsights } from "@/lib/insights";
 import { loadChartBlob } from "@/lib/storage/idb";
 import { useChartStore } from "@/stores/chartStore";
 import { useDatasetStore } from "@/stores/datasetStore";
@@ -32,6 +35,7 @@ export default function VizPage() {
   const [kind, setKind] = useState<ChartKind>("bar-vertical");
   const [capturing, setCapturing] = useState(false);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const [palette, setPalette] = useState<string[]>([]);
   const chartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,9 +50,21 @@ export default function VizPage() {
     return deriveCleanRows(dataset, resolutions).rows;
   }, [dataset, resolutions]);
 
-  const indicator = useMemo(() => VHSND_INDICATORS.find((i) => i.id === selectedId) ?? VHSND_INDICATORS[0], [selectedId]);
+  const selectedIndicator = useMemo(
+    () => VHSND_INDICATORS.find((i) => i.id === selectedId) ?? VHSND_INDICATORS[0],
+    [selectedId],
+  );
+  const indicator = useMemo(() => {
+    if (selectedIndicator && evaluateIndicator(cleanRows, selectedIndicator).points.length === 0) {
+      const fallback = VHSND_INDICATORS.find((i) => evaluateIndicator(cleanRows, i).points.length > 0);
+      if (fallback) return fallback;
+    }
+    return selectedIndicator;
+  }, [selectedIndicator, cleanRows]);
   const series = useMemo(() => evaluateIndicator(cleanRows, indicator), [cleanRows, indicator]);
   const suggestions = useMemo(() => suggestCharts(indicator, series), [indicator, series]);
+  const vizInsights = useMemo(() => computeVizInsights(dataset, resolutions, series), [dataset, resolutions, series]);
+  const datasetInsights = useMemo(() => computeDatasetInsights(dataset), [dataset]);
 
   function selectIndicator(id: string) {
     setSelectedId(id);
@@ -153,6 +169,54 @@ export default function VizPage() {
         </div>
       </section>
 
+      {vizInsights && datasetInsights && (
+        <InsightPanel
+          title="Indicator & data insights"
+          insights={[
+            { label: "Cleaned rows", value: vizInsights.cleanRows },
+            { label: "Total rows", value: vizInsights.totalRows },
+            { label: "Dropped", value: vizInsights.droppedRows },
+            { label: "Pending", value: vizInsights.pendingRows, tone: vizInsights.pendingRows > 0 ? "warning" : "ok" },
+            { label: "Data points", value: vizInsights.pointCount },
+            { label: "Cardinality", value: vizInsights.cardinality },
+            { label: "Missing rate", value: `${(vizInsights.missingRate * 100).toFixed(0)}%`, tone: vizInsights.missingRate > 0.5 ? "warning" : "ok" },
+            { label: "Date span (days)", value: vizInsights.dateSpanDays },
+            { label: "Columns with data", value: datasetInsights.columnsPresent },
+            { label: "Not in this file", value: datasetInsights.columnsMissing, tone: "neutral" },
+            { label: "Present but empty", value: datasetInsights.columnsEmpty, tone: datasetInsights.columnsEmpty > 0 ? "warning" : "ok" },
+          ]}
+        >
+          <div className="row-wrap" style={{ gap: 18 }}>
+            <div>
+              <h4 style={{ margin: "0 0 6px", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                Numeric summary
+              </h4>
+              {vizInsights.numericSummary ? (
+                <p className="small" style={{ margin: 0 }}>
+                  min <strong>{vizInsights.numericSummary.min}</strong> · max{" "}
+                  <strong>{vizInsights.numericSummary.max}</strong> · mean{" "}
+                  <strong>{vizInsights.numericSummary.mean.toFixed(2)}</strong> · n{" "}
+                  <strong>{vizInsights.numericSummary.count}</strong>
+                </p>
+              ) : (
+                <p className="small muted" style={{ margin: 0 }}>No numeric samples for this indicator.</p>
+              )}
+            </div>
+            <div>
+              <h4 style={{ margin: "0 0 6px", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                Shape
+              </h4>
+              <p className="small" style={{ margin: 0 }}>
+                {vizInsights.numericShape}
+                {vizInsights.cardinality > 0 && vizInsights.cardinality === vizInsights.pointCount && vizInsights.pointCount > 1 && (
+                  <span className="muted"> — every value is unique (that is why bars all look equal)</span>
+                )}
+              </p>
+            </div>
+          </div>
+        </InsightPanel>
+      )}
+
       <section className="section">
         <div className="card" style={{ padding: 0 }}>
           <div className="row-wrap" style={{ padding: 14, borderBottom: "1px solid var(--border)" }}>
@@ -183,9 +247,13 @@ export default function VizPage() {
             </div>
           </div>
 
+          <div style={{ padding: "0 14px 10px" }}>
+            <ColorPicker selected={palette} onChange={setPalette} />
+          </div>
+
           <div ref={chartRef} style={{ padding: 16 }}>
             <h4 style={{ margin: "0 0 8px", color: "var(--text)" }}>{indicator.label}</h4>
-            <ChartCanvas kind={kind} title={indicator.label} series={series} />
+            <ChartCanvas kind={kind} title={indicator.label} series={series} palette={palette} />
           </div>
 
           <div className="row" style={{ padding: "0 16px 16px", justifyContent: "flex-end" }}>

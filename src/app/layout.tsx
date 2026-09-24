@@ -9,17 +9,19 @@ export const metadata: Metadata = {
 
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-eval'",
+  // Next.js injects inline hydration/bootstrap scripts; a static offline app
+  // cannot use nonces (no server), so inline must be permitted. Everything
+  // else (remote origins, plugins) stays blocked.
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self'",
-  "worker-src 'self' blob:",
+  "connect-src 'self' data: blob:",
+  "media-src 'self'",
+  "worker-src 'self' blob: data:",
   "object-src 'none'",
   "base-uri 'none'",
-  "form-action 'none'",
-  "frame-src 'none'",
-  "upgrade-insecure-requests",
+  "form-action 'self'",
 ].join("; ");
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

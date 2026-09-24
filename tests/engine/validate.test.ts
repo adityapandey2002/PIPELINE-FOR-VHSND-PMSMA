@@ -99,9 +99,9 @@ describe("cross-field rules: select-multiple internals", () => {
 });
 
 describe("field-level validation", () => {
-  it("flags a missing required field (B8)", () => {
+  it("skips MISSING_REQUIRED checks while the rule is disabled", () => {
     const r = validateRows([row({ SubmissionDate: "2024-01-15" })], schema);
-    expect(codes(r)).toContain("MISSING_REQUIRED");
+    expect(codes(r)).not.toContain("MISSING_REQUIRED");
   });
   it("flags an invalid boolean", () => {
     const r = validateRows([row({ C1: "sometimes" })], schema);

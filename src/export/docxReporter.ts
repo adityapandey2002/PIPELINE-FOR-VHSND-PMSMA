@@ -1,22 +1,46 @@
 import { createReport } from "docx-templates";
 import type { ReportContext } from "@/export/reportContext";
 
-/**
- * Renders an official .docx template (embedded at build time) with the report
- * context. `data` is frozen and passed as the template's context: template
- * authors can reference e.g. `dataset.name`, `summary`, `indicators`,
- * `audit`, `manifest`. Executable expressions are intentionally restricted to
- * pure reads of this context (no additionalJsContext), keeping template code
- * sandboxed.
- */
+export interface DocxChartImage {
+  blobKey: string;
+  blob: Blob;
+  width: number;
+  height: number;
+}
+
+const PX_TO_CM = 2.54 / 96;
+
 export async function renderDocxReport(
   templateBytes: Uint8Array,
   ctx: ReportContext,
+  chartImages: DocxChartImage[] = [],
 ): Promise<Blob> {
+  const byKey = new Map(chartImages.map((c) => [c.blobKey, c]));
+
+  const data = {
+    ...(ctx as unknown as Record<string, unknown>),
+    charts: ctx.charts.filter((c) => c.blobKey !== null && byKey.has(c.blobKey)),
+  };
+
   const report = await createReport({
     template: templateBytes,
-    data: ctx as unknown as Record<string, unknown>,
-    additionalJsContext: undefined,
+    data,
+    additionalJsContext: {
+      chartImage: async (blobKey: string) => {
+        const entry = byKey.get(blobKey);
+        if (!entry) return undefined;
+        const buffer = await entry.blob.arrayBuffer();
+        const widthPx = entry.width > 0 ? entry.width : 640;
+        const heightPx = entry.height > 0 ? entry.height : 360;
+        return {
+          width: widthPx * PX_TO_CM,
+          height: heightPx * PX_TO_CM,
+          data: buffer,
+          extension: ".png" as const,
+          alt: "chart",
+        };
+      },
+    },
     cmdDelimiter: ["{{", "}}"],
     processLineBreaks: true,
   });

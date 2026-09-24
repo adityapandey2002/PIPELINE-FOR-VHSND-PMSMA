@@ -127,14 +127,33 @@ export function evaluateIndicator(rows: CleanRow[], def: IndicatorDef): Indicato
         if (typeof v === "string" && v.length >= 10) return v.slice(0, 10);
         return "";
       };
+      const hasValue = (key: string) => rows.some((row) => valueOf(row.values[key]) !== "");
+      const looksTemporal = (key: string) =>
+        /date|visit|held/i.test(key) || /date|visit|held/i.test(columnLabel(key));
+      let dateKeys = ["SubmissionDate", "B8"].filter(hasValue);
+      if (dateKeys.length === 0 && rows.length > 0) {
+        dateKeys = Object.keys(rows[0].values).filter((key) => looksTemporal(key) && hasValue(key));
+      }
       for (const row of rows) {
-        const day = valueOf(row.values["SubmissionDate"]) || valueOf(row.values["B8"]);
-        if (day) byDay.set(day, (byDay.get(day) ?? 0) + 1);
+        for (const key of dateKeys) {
+          const day = valueOf(row.values[key]);
+          if (day) {
+            byDay.set(day, (byDay.get(day) ?? 0) + 1);
+            break;
+          }
+        }
+      }
+      if (byDay.size === 0 && rows.length > 0) {
+        const width = String(rows.length).length;
+        rows.forEach((_, i) => {
+          byDay.set(String(i + 1).padStart(width, "0"), 1);
+        });
       }
       const days = [...byDay.keys()].sort();
       const points: SeriesPoint[] = days.map((day) => ({ name: day, value: byDay.get(day) ?? 0 }));
       timeLabels.push(...days);
-      if (days.length > 1) {
+      const isoDay = /^\d{4}-\d{2}-\d{2}$/;
+      if (days.length > 1 && isoDay.test(days[0]) && isoDay.test(days[days.length - 1])) {
         stats.dateSpanDays = Math.round(
           (new Date(days[days.length - 1]).getTime() - new Date(days[0]).getTime()) / 86400000,
         );
@@ -145,7 +164,8 @@ export function evaluateIndicator(rows: CleanRow[], def: IndicatorDef): Indicato
       return { points, samples, timeLabels, stats };
     }
 
-    case "categorical": {
+    case "categorical":
+    case "geospatial": {
       let points: SeriesPoint[];
       if (def.dimensionField && def.dimensionField !== "B2A") {
         const byDim = new Map<string, number>();

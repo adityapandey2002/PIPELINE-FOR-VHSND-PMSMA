@@ -71,6 +71,31 @@ function valueToEpochMs(v: CellValue | Date): number | null {
     if (m < 1 || m > 12 || d < 1 || d > 31) return null;
     return Date.UTC(y, m - 1, d);
   }
+  // Day-first/numeric text like "18/06/2026", "18.06.2026", "18-06-26"
+  // (the convention used by the NHM forms this pipeline ingests).
+  const dm = /^(\d{1,2})[/. -](\d{1,2})[/. -](\d{2,4})$/.exec(t);
+  if (dm) {
+    let d = Number(dm[1]);
+    let m = Number(dm[2]);
+    const yRaw = dm[3];
+    const y =
+      yRaw.length === 2
+        ? Number(yRaw) >= 70
+          ? 1900 + Number(yRaw)
+          : 2000 + Number(yRaw)
+        : Number(yRaw);
+    if (d > 12) {
+      // day-first
+    } else if (m > 12) {
+      // month-first (unambiguous)
+      const tmp = d;
+      d = m;
+      m = tmp;
+    }
+    // Both tokens ambiguous: keep day-first, the region's convention.
+    if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1900 || y > 2400) return null;
+    return Date.UTC(y, m - 1, d);
+  }
   const ep = Date.parse(t);
   if (!Number.isNaN(ep)) {
     const d = new Date(ep);

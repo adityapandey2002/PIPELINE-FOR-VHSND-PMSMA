@@ -51,12 +51,15 @@ export function ChartCanvas({
   title,
   series,
   config,
+  palette,
 }: {
   kind: ChartConfig["kind"];
   title: string;
   series: IndicatorSeries;
   config?: ChartConfig;
+  palette?: string[];
 }) {
+  const colors = palette && palette.length > 0 ? palette : PALETTE;
   const data = useMemo(() => {
     if (kind === "histogram") return histogram(series.samples, (config?.props?.bins as number) ?? 5);
     return series.points;
@@ -66,11 +69,33 @@ export function ChartCanvas({
   const horizontal = kind === "bar-horizontal";
   const tickFont = { fontSize: 11, fill: "#5b6b7c" };
 
+  if (data.length === 0) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: 300,
+          background: "#fff",
+          borderRadius: 8,
+          padding: 8,
+        }}
+        aria-label={title}
+      >
+        <div className="empty" style={{ display: "grid", placeItems: "center", minHeight: 280 }}>
+          <p className="muted small" style={{ maxWidth: 420, textAlign: "center" }}>
+            No data to display for this indicator. If the summary below shows {`0`} cleaned rows, check that
+            the expected columns were recognized on import.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
         width: "100%",
-        height: "100%",
+        height: 300,
         minHeight: 260,
         background: "#fff",
         borderRadius: 8,
@@ -91,7 +116,7 @@ export function ChartCanvas({
               label={(entry) => String(entry.name)}
             >
               {data.map((_, i) => (
-                <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+                <Cell key={i} fill={colors[i % colors.length]} />
               ))}
             </Pie>
             <Tooltip />
@@ -102,7 +127,7 @@ export function ChartCanvas({
             <XAxis dataKey="name" tick={tickFont} interval="preserveStartEnd" />
             <YAxis tick={tickFont} width={44} allowDecimals={false} />
             <Tooltip />
-            <Line type="monotone" dataKey="value" name={title} stroke="#0f6c5a" strokeWidth={2} dot={{ r: 2 }} />
+            <Line type="monotone" dataKey="value" name={title} stroke={colors[0]} strokeWidth={2} dot={{ r: 2 }} />
           </LineChart>
         ) : kind === "area" ? (
           <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
@@ -110,7 +135,7 @@ export function ChartCanvas({
             <XAxis dataKey="name" tick={tickFont} interval="preserveStartEnd" />
             <YAxis tick={tickFont} width={44} allowDecimals={false} />
             <Tooltip />
-            <Area type="monotone" dataKey="value" name={title} fill="#0f6c5a" fillOpacity={0.25} stroke="#0f6c5a" strokeWidth={2} />
+            <Area type="monotone" dataKey="value" name={title} fill={colors[0]} fillOpacity={0.25} stroke={colors[0]} strokeWidth={2} />
           </AreaChart>
         ) : kind === "table" ? (
           <TableFallback data={data} title={title} />
@@ -139,7 +164,11 @@ export function ChartCanvas({
               </>
             )}
             <Tooltip />
-            <Bar dataKey="value" name={title} fill="#0f6c5a" radius={horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]} maxBarSize={42} />
+            <Bar dataKey="value" name={title} radius={horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]} maxBarSize={42}>
+              {data.map((_, i) => (
+                <Cell key={i} fill={colors[i % colors.length]} />
+              ))}
+            </Bar>
           </BarChart>
         )}
       </ResponsiveContainer>

@@ -69,6 +69,16 @@ describe("coerceDate", () => {
   it("parses human-readable text", () => {
     expect(coerceDate("Jan 15 2024")).toBe("2024-01-15");
   });
+  it("parses day-first numeric dates (NHM convention)", () => {
+    expect(coerceDate("18/06/2026")).toBe("2026-06-18");
+    expect(coerceDate("18.06.2026")).toBe("2026-06-18");
+    expect(coerceDate("18-06-2026")).toBe("2026-06-18");
+    expect(coerceDate("18/06/26")).toBe("2026-06-18");
+    expect(coerceDate("05-06-2026")).toBe("2026-06-05"); // ambiguous -> day-first
+  });
+  it("still parses month-first formats when unambiguous", () => {
+    expect(coerceDate("12/31/2026")).toBe("2026-12-31");
+  });
   it("rejects invalid dates", () => {
     expect(coerceDate("2024-13-40")).toBeNull();
     expect(coerceDate("not a date")).toBeNull();

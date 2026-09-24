@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "embed:templates": "node scripts/embed-templates.mjs",
+    "embed:templates": "node scripts/make-default-templates.mjs && node scripts/embed-templates.mjs",
+    "make:sample": "node scripts/make-sample-data.cjs",
     "build:check-offline": "node scripts/check-offline.mjs",
     "build:all": "npm run build && npm run build:check-offline && npm run embed:templates",
     "ci": "npm run typecheck && npm run lint && npm run test && npm run build"

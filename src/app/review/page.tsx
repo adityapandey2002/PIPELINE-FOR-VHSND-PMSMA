@@ -5,10 +5,13 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { AppDatasetPicker } from "@/components/DatasetPicker";
 import { RowDrawer } from "@/components/RowDrawer";
+import { InsightPanel } from "@/components/InsightPanel";
+import { SummaryCard } from "@/components/SummaryCard";
 import type { CleanRow } from "@/contracts/resolution";
 import type { Severity } from "@/contracts/violation";
 import { severityRank } from "@/contracts/violation";
 import { deriveCleanRows, unresolvedErrors } from "@/lib/derive";
+import { computeCleaningInsights, computeDatasetInsights } from "@/lib/insights";
 import { runValidate } from "@/lib/workers";
 import { useDatasetStore } from "@/stores/datasetStore";
 import { useResolutionStore } from "@/stores/resolutionStore";
@@ -59,6 +62,12 @@ export default function ReviewPage() {
       pendingCount: derived.pending.length,
     };
   }, [dataset, resolutions]);
+
+  const cleaningInsights = useMemo(
+    () => computeCleaningInsights(dataset, violations, resolutions),
+    [dataset, violations, resolutions],
+  );
+  const datasetInsights = useMemo(() => computeDatasetInsights(dataset), [dataset]);
 
   async function handleRevalidate() {
     if (!dataset) return;
@@ -154,6 +163,51 @@ export default function ReviewPage() {
           <SummaryCard label="Dropped" value={clean.dropped.length} tone="neutral" />
         </div>
       </section>
+
+      {cleaningInsights && datasetInsights && (
+        <InsightPanel
+          title="Data insights"
+          insights={[
+            { label: "Pending decisions", value: cleaningInsights.pendingRows, tone: cleaningInsights.pendingRows > 0 ? "warning" : "ok" },
+            { label: "Info notices", value: cleaningInsights.info },
+            { label: "Columns with data", value: datasetInsights.columnsPresent },
+            { label: "Not in this file", value: datasetInsights.columnsMissing, tone: "neutral" },
+            { label: "Present but empty", value: datasetInsights.columnsEmpty, tone: datasetInsights.columnsEmpty > 0 ? "warning" : "ok" },
+            { label: "Sparse (<50%)", value: datasetInsights.sparseColumns.length, tone: datasetInsights.sparseColumns.length > 0 ? "warning" : "ok" },
+          ]}
+        >
+          <div className="row-wrap" style={{ gap: 18 }}>
+            <div>
+              <h4 style={{ margin: "0 0 6px", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                Violations by category
+              </h4>
+              {Object.keys(cleaningInsights.byCategory).length === 0 ? (
+                <p className="small muted" style={{ margin: 0 }}>None.</p>
+              ) : (
+                <div className="row-wrap" style={{ gap: 8 }}>
+                  {Object.entries(cleaningInsights.byCategory)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([cat, n]) => (
+                      <span key={cat} className="badge badge-neutral">
+                        {cat}: {n}
+                      </span>
+                    ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <h4 style={{ margin: "0 0 6px", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                Columns not in this file
+              </h4>
+              <p className="small muted" style={{ margin: 0 }}>
+                {datasetInsights.columnsMissing === 0
+                  ? "All expected columns present."
+                  : `${datasetInsights.columnsPresent} of ${datasetInsights.columnsExpected} schema fields are in this export. The remaining ${datasetInsights.columnsMissing} are simply not in the file — nothing was dropped.`}
+              </p>
+            </div>
+          </div>
+        </InsightPanel>
+      )}
 
       {unresolved.length > 0 && (
         <section className="card" style={{ borderColor: "var(--error)", background: "var(--error-soft)" }}>
@@ -271,16 +325,5 @@ export default function ReviewPage() {
         )}
       </section>
     </AppShell>
-  );
-}
-
-function SummaryCard({ label, value, tone }: { label: string; value: number; tone: "neutral" | "error" | "warning" | "ok" }) {
-  const color =
-    tone === "error" ? "var(--error)" : tone === "warning" ? "var(--warning)" : tone === "ok" ? "var(--ok)" : "var(--text)";
-  return (
-    <div className="card" style={{ margin: 0, padding: "14px 16px" }}>
-      <div className="muted small" style={{ textTransform: "uppercase", letterSpacing: "0.03em" }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 700, color, marginTop: 2 }}>{value.toLocaleString("en-IN")}</div>
-    </div>
   );
 }
