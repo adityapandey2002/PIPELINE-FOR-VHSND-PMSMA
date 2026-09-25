@@ -12,6 +12,7 @@ import type { ChartConfig, ChartKind } from "@/contracts/chart";
 import { evaluateIndicator, suggestCharts, VHSND_INDICATORS } from "@/schema/indicators";
 import { deriveCleanRows } from "@/lib/derive";
 import { computeVizInsights, computeDatasetInsights } from "@/lib/insights";
+import { COMPARISONS, COMPARISON_CATEGORIES } from "@/lib/comparisons";
 import { loadChartBlob } from "@/lib/storage/idb";
 import { useChartStore } from "@/stores/chartStore";
 import { useDatasetStore } from "@/stores/datasetStore";
@@ -32,6 +33,8 @@ export default function VizPage() {
   const removeChart = useChartStore((s) => s.removeChart);
 
   const [selectedId, setSelectedId] = useState<string>(VHSND_INDICATORS[0]?.id ?? "");
+  const [mode, setMode] = useState<"indicator" | "comparison">("indicator");
+  const [comparisonId, setComparisonId] = useState<string>(COMPARISONS[0]?.id ?? "");
   const [kind, setKind] = useState<ChartKind>("bar-vertical");
   const [capturing, setCapturing] = useState(false);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
@@ -63,7 +66,24 @@ export default function VizPage() {
   }, [selectedIndicator, cleanRows]);
   const series = useMemo(() => evaluateIndicator(cleanRows, indicator), [cleanRows, indicator]);
   const suggestions = useMemo(() => suggestCharts(indicator, series), [indicator, series]);
-  const vizInsights = useMemo(() => computeVizInsights(dataset, resolutions, series), [dataset, resolutions, series]);
+
+  const selectedComparison = useMemo(
+    () => COMPARISONS.find((c) => c.id === comparisonId) ?? COMPARISONS[0],
+    [comparisonId],
+  );
+  const compResult = useMemo(
+    () => (mode === "comparison" && selectedComparison ? selectedComparison.compute(cleanRows) : null),
+    [mode, selectedComparison, cleanRows],
+  );
+
+  const activeKind: ChartKind = mode === "comparison" ? compResult?.kind ?? "bar-vertical" : kind;
+  const activeSeries = compResult ? compResult.series : series;
+  const activeTitle = mode === "comparison" ? selectedComparison.label : indicator.label;
+
+  const vizInsights = useMemo(
+    () => computeVizInsights(dataset, resolutions, activeSeries),
+    [dataset, resolutions, activeSeries],
+  );
   const datasetInsights = useMemo(() => computeDatasetInsights(dataset), [dataset]);
 
   function selectIndicator(id: string) {
@@ -106,11 +126,16 @@ export default function VizPage() {
       });
       const blob = await (await fetch(dataUrl)).blob();
       const config: ChartConfig = {
-        kind,
-        indicatorId: indicator.id,
-        title: indicator.label,
-        valueKey: indicator.valueField,
-        props: { series, bins: indicator.numericBinCount ?? 5 },
+        kind: activeKind,
+        indicatorId: mode === "comparison" ? selectedComparison.id : indicator.id,
+        title: activeTitle,
+        valueKey: mode === "comparison" ? selectedComparison.id : indicator.valueField,
+        props: {
+          series: activeSeries,
+          bins: indicator.numericBinCount ?? 5,
+          extra: compResult?.extra ?? null,
+          insight: compResult?.insight ?? "",
+        },
       };
       await addChart(dataset.id, config, {
         blob,
@@ -221,39 +246,119 @@ export default function VizPage() {
         <div className="card" style={{ padding: 0 }}>
           <div className="row-wrap" style={{ padding: 14, borderBottom: "1px solid var(--border)" }}>
             <span className="muted small" style={{ textTransform: "uppercase", letterSpacing: "0.03em", fontWeight: 700 }}>
-              Indicator
+              Analysis
             </span>
-            <select value={selectedId} onChange={(e) => selectIndicator(e.target.value)} style={{ flex: "1 1 360px" }}>
-              {VHSND_INDICATORS.map((i) => (
-                <option key={i.id} value={i.id}>{i.label}</option>
-              ))}
-            </select>
+            <div className="row-wrap" style={{ gap: 6 }}>
+              <button
+                className={`btn btn-sm${mode === "indicator" ? " btn-primary" : ""}`}
+                onClick={() => setMode("indicator")}
+              >
+                Indicators
+              </button>
+              <button
+                className={`btn btn-sm${mode === "comparison" ? " btn-primary" : ""}`}
+                onClick={() => setMode("comparison")}
+                title="20 comparison charts (funnel, radar, box, gauge, cross-tab…)"
+              >
+                Comparison charts (20)
+              </button>
+            </div>
+            {mode === "indicator" ? (
+              <select value={selectedId} onChange={(e) => selectIndicator(e.target.value)} style={{ flex: "1 1 360px" }}>
+                {VHSND_INDICATORS.map((i) => (
+                  <option key={i.id} value={i.id}>{i.label}</option>
+                ))}
+              </select>
+            ) : (
+              <select
+                value={comparisonId}
+                onChange={(e) => setComparisonId(e.target.value)}
+                style={{ flex: "1 1 460px" }}
+              >
+                {COMPARISON_CATEGORIES.map((cat) => (
+                  <optgroup key={cat} label={cat}>
+                    {COMPARISONS.filter((c) => c.category === cat).map((c) => (
+                      <option key={c.id} value={c.id}>{c.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            )}
           </div>
 
           <div style={{ padding: 14 }}>
-            <p className="muted small">{indicator.description}</p>
-            <div className="row-wrap">
-              <span className="muted small">Recommended:</span>
-              {suggestions.map((s) => (
-                <button
-                  key={s.kind}
-                  className={`btn btn-sm${kind === s.kind ? " btn-primary" : ""}`}
-                  title={s.reason}
-                  onClick={() => setKind(s.kind)}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
+            <p className="muted small">
+              {mode === "comparison" ? selectedComparison.description : indicator.description}
+            </p>
+            {mode === "indicator" && (
+              <div className="row-wrap">
+                <span className="muted small">Recommended:</span>
+                {suggestions.map((s) => (
+                  <button
+                    key={s.kind}
+                    className={`btn btn-sm${kind === s.kind ? " btn-primary" : ""}`}
+                    title={s.reason}
+                    onClick={() => setKind(s.kind)}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {mode === "comparison" && compResult && (
+              <div className="row-wrap" style={{ gap: 8 }}>
+                <span className="muted small">Chart type:</span>
+                <span className="btn btn-sm" style={{ cursor: "default" }}>{activeKind}</span>
+                {compResult.columnsMissing.length > 0 && (
+                  <span className="small" style={{ color: "var(--warning)", fontWeight: 700 }}>
+                    Not in this file: {compResult.columnsMissing.join(", ")}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div style={{ padding: "0 14px 10px" }}>
             <ColorPicker selected={palette} onChange={setPalette} />
           </div>
 
-          <div ref={chartRef} style={{ padding: 16 }}>
-            <h4 style={{ margin: "0 0 8px", color: "var(--text)" }}>{indicator.label}</h4>
-            <ChartCanvas kind={kind} title={indicator.label} series={series} palette={palette} />
+          <div ref={chartRef} style={{ padding: 16, background: "#fff" }}>
+            <h4 style={{ margin: "0 0 8px", color: "var(--text)" }}>{activeTitle}</h4>
+            <ChartCanvas
+              kind={activeKind}
+              title={activeTitle}
+              series={activeSeries}
+              palette={palette}
+              extra={compResult?.extra}
+            />
+            {compResult && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  background: "#f0fdf9",
+                  border: "1px solid #99f6e4",
+                }}
+              >
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: 10,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    color: "#0f6c5a",
+                    marginBottom: 4,
+                  }}
+                >
+                  Insight
+                </span>
+                <p className="small" style={{ margin: 0, color: "#134e4a", lineHeight: 1.5 }}>
+                  {compResult.insight}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="row" style={{ padding: "0 16px 16px", justifyContent: "flex-end" }}>

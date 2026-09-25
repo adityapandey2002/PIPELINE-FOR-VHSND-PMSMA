@@ -6,7 +6,17 @@ export type ChartKind =
   | "area"
   | "histogram"
   | "scatter"
-  | "table";
+  | "table"
+  | "funnel"
+  | "donut"
+  | "radar"
+  | "box"
+  | "gauge"
+  | "waffle"
+  | "heatmap"
+  | "pareto"
+  | "grouped-bar"
+  | "stacked-100";
 
 export interface ChartConfig {
   kind: ChartKind;

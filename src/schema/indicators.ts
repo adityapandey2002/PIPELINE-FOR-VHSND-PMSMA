@@ -250,6 +250,16 @@ const KIND_LABEL: Record<ChartKind, string> = {
   histogram: "Histogram",
   scatter: "Scatter",
   table: "Summary table",
+  funnel: "Funnel chart",
+  donut: "Donut chart",
+  radar: "Radar chart",
+  box: "Box plot",
+  gauge: "Gauge",
+  waffle: "Waffle chart",
+  heatmap: "Heatmap",
+  pareto: "Pareto chart",
+  "grouped-bar": "Grouped bar",
+  "stacked-100": "100% stacked bar",
 };
 
 /** Rule-based chart fit scoring (higher = better). */
