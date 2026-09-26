@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 const XLSX = require("xlsx");
-const { readFileSync } = require("node:fs");
-const { resolve } = require("node:path");
 
 const file = process.argv[2];
 if (!file) {
