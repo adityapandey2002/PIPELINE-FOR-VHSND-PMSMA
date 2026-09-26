@@ -208,7 +208,7 @@ export default function ReviewPage() {
               <p className="small muted" style={{ margin: 0 }}>
                 {datasetInsights.columnsMissing === 0
                   ? "All expected columns present."
-                  : `${datasetInsights.columnsPresent} of ${datasetInsights.columnsExpected} schema fields are in this export. The remaining ${datasetInsights.columnsMissing} are simply not in the file — nothing was dropped.`}
+                  : `${datasetInsights.columnsPresent + datasetInsights.columnsEmpty} of ${datasetInsights.columnsExpected} schema fields are in this export (${datasetInsights.columnsPresent} with data, ${datasetInsights.columnsEmpty} present but empty). The remaining ${datasetInsights.columnsMissing} are simply not in the file — nothing was dropped.`}
               </p>
             </div>
           </div>

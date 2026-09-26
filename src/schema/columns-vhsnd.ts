@@ -930,7 +930,7 @@ export const VHSND_COLUMNS: ColumnEntry[] = [
   },
   {
     "code": "H21",
-    "label": "Is the vaccinator using the diluted BCG/MR/JE vial after the prescribed period (4 hours)?"
+    "label": "Is the diluted BCG/MR/JE vial being used within the prescribed period (4 hours)?"
   },
   {
     "code": "H22",

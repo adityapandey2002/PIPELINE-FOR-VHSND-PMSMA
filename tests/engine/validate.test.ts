@@ -57,9 +57,11 @@ describe("cross-field rules: unsafe practices & required reasons", () => {
     const r = validateRows([row({ H18: "no" })], schema);
     expect(codes(r)).toContain("SYRINGE_NOT_CUT_REASON_REQUIRED");
   });
-  it("X016 flags use of a diluted vial after the period", () => {
-    const r = validateRows([row({ H21: "yes" })], schema);
+  it("X016 flags a diluted vial not used within the period", () => {
+    const r = validateRows([row({ H21: "no" })], schema);
     expect(codes(r)).toContain("DILUTED_VIAL_USED_AFTER_PERIOD");
+    const safe = validateRows([row({ H21: "yes" })], schema);
+    expect(codes(safe)).not.toContain("DILUTED_VIAL_USED_AFTER_PERIOD");
   });
 });
 

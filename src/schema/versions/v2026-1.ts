@@ -519,11 +519,11 @@ export const VHSND_CROSS_FIELD_RULES = toCrossField([
     severity: "error",
     category: "clinical-contradiction",
     description:
-      "Using a diluted BCG/MR/JE vial after the prescribed 4-hour period is an unsafe vaccination practice.",
+      "Using a diluted BCG/MR/JE vial outside the prescribed 4-hour period is an unsafe vaccination practice.",
     appliesTo: (r) => b(r, "H21") !== null,
-    violates: (r) => b(r, "H21") === true,
+    violates: (r) => b(r, "H21") === false,
     describe: () =>
-      "Diluted BCG/MR/JE vial is being used after the 4-hour period (unsafe practice).",
+      "Diluted BCG/MR/JE vial is not being used within the prescribed 4-hour period (unsafe practice).",
   },
 
   /* ----- tele-consultation coherence ----- */
