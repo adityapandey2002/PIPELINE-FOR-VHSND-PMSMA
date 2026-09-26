@@ -226,13 +226,13 @@ Number of teleconsultations you attended during the session,H27
 How many new MCP cards are available at the session site?,H29
 Were any pregnant women registered today?,H30
 Is the information about the services being provided also being maintained in the register?,H31
-H32. So in which,H32
+Which registers are being maintained at the session?,H32
 RCH Register,H32_A
 Rough Register,H32_B
 Other (specify),H32_88
 Others (Specify),H32_SP
-PL/GF visited VHSND site – explained the importance of FP to the beneficiaries using reference material-1.,H33
-PL/GF visited VHSND site – explained the importance of FP to FLWs using reference material-1.,H34
+Was the importance of family planning explained to the beneficiaries by the PL/GF during the VHSND visit?,H33
+Was the importance of family planning explained to the FLWs by the PL/GF during the VHSND visit?,H34
 Is the information being maintained by ANM in the ANMOL App?,ANM1
 How many pregnant women are registered in the ANM dashboard of ANMOL App?,ANM2
 Number of pregnant women,ANM2_1

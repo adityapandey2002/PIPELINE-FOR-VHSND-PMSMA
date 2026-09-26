@@ -57,6 +57,29 @@ describe("deriveCleanRows", () => {
     const { pending } = deriveCleanRows(dataset, {});
     expect(pending.length).toBe(3);
   });
+
+  it("re-reads an override through the schema instead of storing the raw text", () => {
+    const vhsnd = {
+      ...dataset,
+      schemaVersion: "2026.1",
+      kind: "vhsnd",
+    } as unknown as DatasetSnapshot;
+    const resolutions: Record<string, RowResolution> = {
+      r0: { rowId: "r0", status: "override", overrides: { H1BP: "7" }, justification: "typo" },
+      r1: { rowId: "r1", status: "override", overrides: { H1BP: "abc" }, justification: "typo" },
+    };
+    const { rows } = deriveCleanRows(vhsnd, resolutions);
+    expect(rows.find((r) => r.rowId === "r0")?.values.H1BP).toBe(7);
+    // Unreadable text cannot enter the clean dataset as a number.
+    expect(rows.find((r) => r.rowId === "r1")?.values.H1BP ?? null).toBeNull();
+  });
+
+  it("leaves values untouched when the dataset schema cannot be resolved", () => {
+    const { rows } = deriveCleanRows(dataset, {
+      r0: { rowId: "r0", status: "override", overrides: { H1BP: "7" }, justification: "typo" },
+    });
+    expect(rows.find((r) => r.rowId === "r0")?.values.H1BP).toBe("7");
+  });
 });
 
 describe("unresolvedErrors", () => {

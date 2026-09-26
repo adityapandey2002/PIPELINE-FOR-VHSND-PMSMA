@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 import type { DatasetSnapshot, CellValue } from "@/contracts/dataset";
 import type { Violation } from "@/contracts/violation";
+import { keyedViolations } from "@/contracts/violation";
 import { columnLabel } from "@/schema/columns-vhsnd";
+import { getDatasetSchema } from "@/schema";
+import { buildFieldCoercer } from "@/schema/engine/normalize";
 import { useResolutionStore } from "@/stores/resolutionStore";
 
 type Decision = "keep" | "drop" | "override";
@@ -28,7 +31,12 @@ export function RowDrawer({
     () => [...new Set(violations.filter((v) => v.severity === "error").map((v) => v.code))],
     [violations],
   );
+  const listed = useMemo(() => keyedViolations(violations), [violations]);
   const acknowledged = useMemo(() => new Set(existing?.keptViolations ?? []), [existing]);
+  const coercer = useMemo(
+    () => buildFieldCoercer(getDatasetSchema(dataset.schemaVersion, dataset.kind).fields),
+    [dataset.schemaVersion, dataset.kind],
+  );
 
   const [decision, setDecision] = useState<Decision>(
     existing?.status === "drop" ? "drop" : existing?.status === "override" ? "override" : "keep",
@@ -52,7 +60,13 @@ export function RowDrawer({
   }
 
   const decisionError = decision === "drop" || decision === "override" ? justification.trim().length > 0 ? null : "A written reason is required for the audit trail." : null;
-  const fieldError = decision === "override" && overrideValue.trim() === "" ? "Enter a replacement value." : null;
+  const overrideError =
+    decision === "override"
+      ? overrideValue.trim() === ""
+        ? "Enter a replacement value."
+        : coercer.reject(overrideField, overrideValue.trim() as CellValue)
+      : null;
+  const fieldError = overrideError;
 
   function toggleCode(code: string) {
     setAckCodes((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
@@ -96,7 +110,10 @@ export function RowDrawer({
       setError(fieldError);
       return;
     }
-    const overrides = { ...(existing?.overrides ?? {}), [overrideField]: overrideValue.trim() as CellValue };
+    const overrides = {
+      ...(existing?.overrides ?? {}),
+      [overrideField]: coercer.coerce(overrideField, overrideValue.trim() as CellValue),
+    };
     await setResolution(dataset.id, rowId, {
       rowId,
       status: "override",
@@ -133,9 +150,9 @@ export function RowDrawer({
 
       {violations.length > 0 && (
         <div style={{ marginTop: 10 }}>
-          {violations.map((v) => (
+          {listed.map(({ violation: v, key }) => (
             <div
-              key={`${v.rowId}-${v.code}`}
+              key={key}
               className="row row-wrap"
               style={{ alignItems: "flex-start", padding: "6px 0", borderTop: "1px solid var(--border)" }}
             >

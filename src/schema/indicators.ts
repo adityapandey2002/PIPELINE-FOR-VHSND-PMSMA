@@ -3,6 +3,7 @@ import type { CleanRow } from "@/contracts/resolution";
 import type { ChartKind, ChartSuggestion } from "@/contracts/chart";
 import type { Aggregation, ComputedStats, DataType, IndicatorDef } from "@/contracts/indicator";
 import { coerceNumber } from "@/schema/engine/cellCoercers";
+import { isDirectChildOf } from "@/schema/engine/groupChildren";
 import { columnLabel } from "@/schema/columns-vhsnd";
 
 /* ---------------------------------- registry ---------------------------------- */
@@ -65,7 +66,7 @@ export const VHSND_INDICATORS: IndicatorDef[] = [
   numeric("anemia-screened", "Anemia screening (blood samples)", "H1HB", "sum", "Pregnant women whose blood was sampled for anemia."),
   numeric("anemia-identified", "Anemia cases identified", "H1HB1", "sum", "Pregnant women identified as anemic."),
   numeric("anemia-referred", "Anemia referrals", "H1HB2", "sum", "Anemic women referred onward."),
-  numeric("pnc-lactating", "Lactating mothers at post-natal check-up", "H3A", "sum", "Lactating mothers who attended for PNC."),
+  numeric("pnc-lactating", "Lactating mothers at post-natal check-up", "H3A_1", "sum", "Lactating mothers who attended for PNC."),
   numeric(
     "bp-systolic",
     "Blood pressure (systolic) distribution",
@@ -117,7 +118,9 @@ export function evaluateIndicator(rows: CleanRow[], def: IndicatorDef): Indicato
 
   const present = (row: CleanRow, code: string) => {
     const v = row.values[code];
-    return v === true || v === 1 || v === "1" || v === "true" || v === "yes";
+    if (v === true || v === 1) return true;
+    if (typeof v !== "string") return false;
+    return ["1", "true", "yes", "y", "ticked", "checked"].includes(v.trim().toLowerCase());
   };
 
   switch (def.dataType) {
@@ -187,11 +190,13 @@ export function evaluateIndicator(rows: CleanRow[], def: IndicatorDef): Indicato
           .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
       } else {
         // Group option breakdown: count per exploded option column.
+        // `isDirectChildOf` keeps nested groups out: C10_1_A is an option of
+        // C10_1, not of C10, despite the shared prefix.
         const counts = new Map<string, number>();
         const root = def.valueField;
         for (const row of rows) {
           for (const code of Object.keys(row.values)) {
-            if (!code.startsWith(`${root}_`)) continue;
+            if (!isDirectChildOf(root, code)) continue;
             if (present(row, code)) counts.set(code, (counts.get(code) ?? 0) + 1);
           }
         }

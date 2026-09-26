@@ -19,13 +19,35 @@ describe("validation rule golden cases", () => {
     expect(errors.length).toBeGreaterThanOrEqual(10);
   });
 
-  it("every select-multiple group gets internal coherence rules", () => {
+  it("generates group coherence rules only where they can actually fire", () => {
     const ds = getDatasetSchema(SCHEMA_VERSION, "vhsnd");
     const rules = ds.crossFieldRules as CrossFieldRuleDef[];
-    const groups = ds.fields.filter((f) => f.type === "group").map((f) => f.id);
+    const groups = ds.fields.filter((f) => f.type === "group");
+
     for (const g of groups) {
-      expect(rules.some((r) => r.id === `X022-${g}`)).toBe(true);
-      expect(rules.some((r) => r.id === `X023-${g}`)).toBe(true);
+      const opts = g.group?.options ?? [];
+      const noneish = opts.filter((o) => o.kind === "none" || o.kind === "not-applicable");
+      const plain = opts.filter((o) => o.kind === "option");
+      const others = opts.filter((o) => o.kind === "other");
+      const specify = opts.filter((o) => o.kind === "specify");
+
+      const hasNoneRule = rules.some((r) => r.id === `X022-${g.id}`);
+      const hasSpecifyRule = rules.some((r) => r.id === `X023-${g.id}`);
+
+      // X022 needs a "None"/"N/A" choice *and* a real option to contradict.
+      expect(hasNoneRule).toBe(noneish.length > 0 && plain.length > 0);
+      // X023 needs a free-text "_SP" column *and* an "Others" option.
+      expect(hasSpecifyRule).toBe(specify.length > 0 && others.length > 0);
     }
+  });
+
+  it("keeps no unreachable group rules", () => {
+    const ds = getDatasetSchema(SCHEMA_VERSION, "vhsnd");
+    const rules = ds.crossFieldRules as CrossFieldRuleDef[];
+    const groups = ds.fields.filter((f) => f.type === "group");
+    const generated = rules.filter((r) => r.id.startsWith("X022-") || r.id.startsWith("X023-"));
+    // 14 groups would naively yield 28; only the 15 reachable ones are emitted.
+    expect(groups).toHaveLength(14);
+    expect(generated).toHaveLength(15);
   });
 });

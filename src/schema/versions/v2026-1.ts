@@ -1,4 +1,6 @@
 import type { FieldDef, GroupOption, SchemaDef } from "@/schema/dsl";
+import { countWithSentinel, ordinalField } from "@/schema/dsl";
+import { isDirectChildOf } from "@/schema/engine/groupChildren";
 import { VHSND_COLUMNS } from "@/schema/columns-vhsnd";
 import {
   b,
@@ -35,13 +37,12 @@ function kindOf(suffix: string): GroupOption["kind"] {
 
 /**
  * Physical columns for a logical group question are `{root}_{suffix}`.
- * `excludeChildPrefixes` guards against higher groups sharing a prefix
- * (e.g. C10_1 belongs to another group, not to C10).
+ * Nested groups are resolved through `isDirectChildOf` so a higher group never
+ * absorbs a sibling group's columns (e.g. C10 must not claim C10_1_A).
  */
-function groupChildren(root: string, excludeChildPrefixes: string[] = []): GroupOption[] {
-  return VHSND_COLUMNS.filter((c) => c.code.startsWith(`${root}_`))
+function groupChildren(root: string): GroupOption[] {
+  return VHSND_COLUMNS.filter((c) => isDirectChildOf(root, c.code))
     .map((c) => ({ code: c.code, suffix: c.code.slice(root.length + 1) }))
-    .filter(({ suffix }) => !excludeChildPrefixes.some((p) => suffix.startsWith(`${p}_`) || suffix === p))
     .map(({ code, suffix }) => ({
       code: suffix,
       kind: kindOf(suffix),
@@ -62,7 +63,7 @@ const groupFields: FieldDef[] = [
     id: "C10",
     label: "Which other members have participated in the session?",
     type: "group",
-    group: { options: groupChildren("C10", ["1"]) },
+    group: { options: groupChildren("C10") },
   },
   {
     id: "C10_1",
@@ -145,23 +146,31 @@ function simpleFields(): FieldDef[] {
   const yn = (id: string) => f(id, "boolean");
   const cnt = (id: string) => f(id, "integer", { range: { min: 0 } });
   const txt = (id: string) => f(id, "text");
+  /** A box a person types into, where "NA" is content rather than filler. */
+  const freeTxt = (id: string) => f(id, "text", { freeText: true });
   const choose = (id: string) => f(id, "choice");
   const dat = (id: string, required = false) => f(id, "date", { required });
   const tim = (id: string) => f(id, "time");
+  /** Count where the form writes a magic number for "none recorded", a real zero. */
+  const cntOrNoData = (id: string, sentinel: number) =>
+    list.push(countWithSentinel(id, labelOf(id), sentinel, { meaning: "zero" }));
+  /** 0/1/2 style ordered answer that is not a plain yes/no. */
+  const ord = (id: string, labels: Record<string, string>) =>
+    list.push(ordinalField(id, labelOf(id), [0, 1, 2], labels));
 
   f("SubmissionDate", "date", { label: "Submission Date" });
   tim("starttime");
   tim("endtime");
   choose("A2");
-  txt("A2_SP");
+  freeTxt("A2_SP");
   txt("A3");
-  txt("A3_SP");
+  freeTxt("A3_SP");
   choose("B1");
   choose("B2");
   txt("B2A");
   txt("B4");
-  txt("B4_1");
-  txt("B4_2");
+  freeTxt("B4_1");
+  freeTxt("B4_2");
   txt("B5");
   txt("B6");
   choose("B7");
@@ -170,7 +179,7 @@ function simpleFields(): FieldDef[] {
   yn("C1");
   yn("C2");
   choose("C3");
-  txt("C3_SP");
+  freeTxt("C3_SP");
   yn("C5");
   yn("C6");
   yn("C7");
@@ -186,15 +195,15 @@ function simpleFields(): FieldDef[] {
   cnt("E2_3");
   cnt("E2_4");
   cnt("E2_5");
-  txt("E3_SP");
+  freeTxt("E3_SP");
   yn("E4");
 
-  txt("G3_SP");
+  freeTxt("G3_SP");
   yn("G11");
   yn("G21");
   yn("G24");
 
-  txt("H1_SP");
+  freeTxt("H1_SP");
   cnt("H1BP");
   cnt("H1BP1");
   cnt("H1PB2");
@@ -204,8 +213,8 @@ function simpleFields(): FieldDef[] {
   cnt("H1HB_3");
   cnt("H1HB_4");
   cnt("H1HB2");
-  txt("H2_SP");
-  cnt("H3A");
+  freeTxt("H2_SP");
+  yn("H3A");
   cnt("H3A_1");
   cnt("H3HB1_1");
   cnt("H3HB2_1");
@@ -213,7 +222,7 @@ function simpleFields(): FieldDef[] {
   cnt("H3HB4_1");
   cnt("H3HB1_4");
   cnt("H3HB1_5");
-  txt("H4_SP");
+  freeTxt("H4_SP");
   yn("H5");
   yn("H5_1");
   cnt("H5_1_1");
@@ -248,16 +257,24 @@ function simpleFields(): FieldDef[] {
   cnt("H29");
   yn("H30");
   yn("H31");
-  txt("H32_SP");
-  yn("H33");
-  yn("H34");
+  freeTxt("H32_SP");
+  const COUNSEL_SCALE = {
+    "0": "Not told",
+    "1": "Told, using reference material",
+    "2": "Told, without material",
+  };
+  ord("H33", COUNSEL_SCALE);
+  ord("H34", COUNSEL_SCALE);
 
   yn("ANM1");
-  cnt("ANM2");
+  // ANM1 names which ANMOL question applies, so ANM2/3/4 are always
+  // applicable. The form writes 99 when she has no data for that question,
+  // which is a real zero rather than a missing answer.
+  cntOrNoData("ANM2", 99);
   cnt("ANM2_1");
-  cnt("ANM3");
+  cntOrNoData("ANM3", 99);
   cnt("ANM3_1");
-  cnt("ANM4");
+  cntOrNoData("ANM4", 99);
   cnt("ANM4_1");
   yn("ANM5");
   yn("ANM6");
@@ -269,7 +286,7 @@ function simpleFields(): FieldDef[] {
   yn("ASHA5");
 
   yn("New");
-  txt("remarks");
+  freeTxt("remarks");
 
   return list;
 }
@@ -292,6 +309,14 @@ function gSpecifySuffix(): string {
 function gOptionSuffixes(root: string): string[] {
   const g = FIELDS.find((f) => f.id === root && f.type === "group");
   return g?.group?.options.filter((o) => o.kind === "option").map((o) => o.code) ?? [];
+}
+function gOtherSuffixes(root: string): string[] {
+  const g = FIELDS.find((f) => f.id === root && f.type === "group");
+  return g?.group?.options.filter((o) => o.kind === "other").map((o) => o.code) ?? [];
+}
+function gSpecifySuffixes(root: string): string[] {
+  const g = FIELDS.find((f) => f.id === root && f.type === "group");
+  return g?.group?.options.filter((o) => o.kind === "specify").map((o) => o.code) ?? [];
 }
 
 interface RuleSpec {
@@ -432,10 +457,11 @@ export const VHSND_CROSS_FIELD_RULES = toCrossField([
     severity: "warning",
     category: "clinical-contradiction",
     description: "Lactating mothers tested for anemia cannot exceed those who attended PNC.",
-    appliesTo: (r) => n(r, "H3A") !== null && n(r, "H3HB1_1") !== null,
-    violates: (r) => (n(r, "H3HB1_1") ?? 0) > (n(r, "H3A") ?? 0),
+    // H3A records *whether* anyone attended; H3A_1 records how many.
+    appliesTo: (r) => n(r, "H3A_1") !== null && n(r, "H3HB1_1") !== null,
+    violates: (r) => (n(r, "H3HB1_1") ?? 0) > (n(r, "H3A_1") ?? 0),
     describe: (r) =>
-      `PNC tested (${n(r, "H3HB1_1")}) exceeds PNC attendees (${n(r, "H3A")}).`,
+      `PNC tested (${n(r, "H3HB1_1")}) exceeds PNC attendees (${n(r, "H3A_1")}).`,
   },
 
   /* ----- session status coherence ----- */
@@ -566,26 +592,42 @@ export const VHSND_CROSS_FIELD_RULES = toCrossField([
     const optionSuffixes = gOptionSuffixes(root);
     const specify = gSpecifySuffix();
     const out: RuleSpec[] = [];
-    out.push({
-      id: `X022-${root}`,
-      code: "NONE_SELECTED_WITH_OPTIONS",
-      severity: "warning",
-      category: "coherence",
-      description: `"None of the above" cannot be selected together with other options in ${root}.`,
-      appliesTo: (r) => groupAny(r, root, noneSuffixes),
-      violates: (r) => groupAny(r, root, optionSuffixes),
-      describe: () => `"None"/"Not applicable" selected along with other options in ${root}.`,
-    });
-    out.push({
-      id: `X023-${root}`,
-      code: "SPECIFY_WITHOUT_OTHER",
-      severity: "warning",
-      category: "coherence",
-      description: `The "Others (specify)" text in ${root} is filled but the "Others" option is not selected.`,
-      appliesTo: (r) => isDefined(r, `${root}_${specify}`),
-      violates: (r) => !groupSelected(r, root, "88"),
-      describe: () => `"Others (specify)" (${root}_SP) filled without selecting the Others option.`,
-    });
+
+    // X022 is only reachable when the group actually offers both a
+    // "None"/"Not applicable" choice and at least one real option. Without a
+    // none-choice `appliesTo` can never be true, and without real options
+    // `violates` can never be true -- the rule would be dead weight.
+    if (noneSuffixes.length > 0 && optionSuffixes.length > 0) {
+      out.push({
+        id: `X022-${root}`,
+        code: "NONE_SELECTED_WITH_OPTIONS",
+        severity: "warning",
+        category: "coherence",
+        description: `"None of the above" cannot be selected together with other options in ${root}.`,
+        appliesTo: (r) => groupAny(r, root, noneSuffixes),
+        violates: (r) => groupAny(r, root, optionSuffixes),
+        describe: () => `"None"/"Not applicable" selected along with other options in ${root}.`,
+      });
+    }
+
+    // X023 needs both halves of the comparison: a free-text "_SP" column to be
+    // filled, and an "Others" (88) option to have been selected. Without the
+    // "_SP" column it can never apply; without an "88" option nothing can
+    // select it, so it would fire on every free-text entry.
+    const hasSpecify = gSpecifySuffixes(root).length > 0;
+    const hasOther = gOtherSuffixes(root).length > 0;
+    if (hasSpecify && hasOther) {
+      out.push({
+        id: `X023-${root}`,
+        code: "SPECIFY_WITHOUT_OTHER",
+        severity: "warning",
+        category: "coherence",
+        description: `The "Others (specify)" text in ${root} is filled but the "Others" option is not selected.`,
+        appliesTo: (r) => isDefined(r, `${root}_${specify}`),
+        violates: (r) => !groupSelected(r, root, "88"),
+        describe: () => `"Others (specify)" (${root}_SP) filled without selecting the Others option.`,
+      });
+    }
     return out;
   }),
 

@@ -9,7 +9,9 @@ export type FieldType =
   | "time"
   | "text"
   | "choice"
-  | "group";
+  | "group"
+  /** Small ordered scale (e.g. 0 = not told, 1 = told with material, 2 = told without). */
+  | "ordinal";
 
 export interface GroupOption {
   code: string;
@@ -29,6 +31,21 @@ export interface FieldDef {
   required?: boolean;
   /** Allowed values for `choice` fields (tolerant: values not in set are kept). */
   valueSet?: string[];
+  /** Allowed values for `ordinal` fields. Values outside the set are flagged, not dropped. */
+  ordinalScale?: { values: number[]; labels?: Record<string, string> };
+  /**
+   * Raw values the form writes to mean "no answer" rather than a measurement.
+   * `sentinelMeaning` decides how they are read: `no-data` drops them so they
+   * never reach averages or range checks, `zero` keeps them as a real 0.
+   */
+  sentinels?: (string | number)[];
+  sentinelMeaning?: SentinelMeaning;
+  /**
+   * Set on free-text boxes a person types into by hand (names, "Others
+   * (Specify)", remarks). For those, "NA" and friends are content, not the
+   * form's "no answer" filler, so the missing-token list is not applied.
+   */
+  freeText?: boolean;
   /** Range for numeric fields. */
   range?: { min?: number; max?: number };
   /** Optional unit hint for messages. */
@@ -97,6 +114,46 @@ export function yesNo(id: string, label: string, required = false): FieldDef {
   return { id, label, type: "boolean", required };
 }
 
+/**
+ * Ordered multi-level question that is not a plain yes/no. The raw number is
+ * always preserved; `ordinalScale` only drives validation and display.
+ */
+export function ordinalField(
+  id: string,
+  label: string,
+  values: number[],
+  labels?: Record<string, string>,
+): FieldDef {
+  return { id, label, type: "ordinal", ordinalScale: { values, labels } };
+}
+
+/**
+ * What a declared sentinel the form wrote actually means.
+ *
+ * - `no-data` (default): the form encodes "no answer" as a magic number, so
+ *   the value is dropped and excluded from counts.
+ * - `zero`: the question *was* applicable but there is nothing to record, so
+ *   the sentinel is a real zero and must stay in sums and averages.
+ */
+export type SentinelMeaning = "no-data" | "zero";
+
+/** Count where a raw value (e.g. 99) encodes "no answer" or "none". */
+export function countWithSentinel(
+  id: string,
+  label: string,
+  sentinel: number,
+  opts: { min?: number; max?: number; meaning?: SentinelMeaning } = {},
+): FieldDef {
+  return {
+    id,
+    label,
+    type: "integer",
+    sentinels: [sentinel],
+    sentinelMeaning: opts.meaning ?? "no-data",
+    range: { min: opts.min ?? 0, max: opts.max },
+  };
+}
+
 export function count(id: string, label: string, opts: { min?: number; max?: number } = {}): FieldDef {
   return { id, label, type: "integer", range: { min: opts.min ?? 0, max: opts.max } };
 }
@@ -128,6 +185,10 @@ export function projectSchema(def: SchemaDef): unknown {
           type: f.type,
           required: f.required ?? undefined,
           valueSet: f.valueSet,
+          ordinalScale: f.ordinalScale,
+          sentinels: f.sentinels,
+          sentinelMeaning: f.sentinelMeaning,
+          freeText: f.freeText,
           range: f.range,
           unit: f.unit,
           dateRange: f.dateRange,

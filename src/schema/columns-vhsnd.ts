@@ -970,7 +970,7 @@ export const VHSND_COLUMNS: ColumnEntry[] = [
   },
   {
     "code": "H32",
-    "label": "H32. So in which"
+    "label": "Which registers are being maintained at the session?"
   },
   {
     "code": "H32_88",
@@ -990,11 +990,11 @@ export const VHSND_COLUMNS: ColumnEntry[] = [
   },
   {
     "code": "H33",
-    "label": "PL/GF visited VHSND site – explained the importance of FP to the beneficiaries using reference material-1."
+    "label": "Was the importance of family planning explained to the beneficiaries by the PL/GF during the VHSND visit?"
   },
   {
     "code": "H34",
-    "label": "PL/GF visited VHSND site – explained the importance of FP to FLWs using reference material-1."
+    "label": "Was the importance of family planning explained to the FLWs by the PL/GF during the VHSND visit?"
   },
   {
     "code": "New",

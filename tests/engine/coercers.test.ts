@@ -55,6 +55,13 @@ describe("coerceNumber", () => {
     expect(coerceNumber("NaN")).toBeNull();
     expect(coerceNumber("12.5kg")).toBeNull();
   });
+  it("never turns a blank or whitespace-only cell into 0", () => {
+    expect(coerceNumber("")).toBeNull();
+    expect(coerceNumber(" ")).toBeNull();
+    expect(coerceNumber("\t")).toBeNull();
+    expect(coerceNumber("\u00a0")).toBeNull();
+    expect(coerceNumber("   ")).toBeNull();
+  });
 });
 
 describe("coerceDate", () => {
@@ -96,6 +103,13 @@ describe("coerceTime", () => {
   it("rejects out-of-range", () => {
     expect(coerceTime("25:00")).toBeNull();
     expect(coerceTime("8:75")).toBeNull();
+  });
+  it("reads a Date cell on the same clock as coerceDate", () => {
+    // Excel serial anchored at midnight UTC: the date and the time must come
+    // from one frame of reference or a late session lands on the wrong day.
+    const cell = new Date(Date.UTC(2026, 8, 25, 18, 45, 0));
+    expect(coerceDate(cell)).toBe("2026-09-25");
+    expect(coerceTime(cell)).toBe("18:45:00");
   });
 });
 

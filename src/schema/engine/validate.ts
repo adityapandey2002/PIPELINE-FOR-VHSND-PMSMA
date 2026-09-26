@@ -1,11 +1,12 @@
 import type { NormalizedRow, CellValue } from "@/contracts/dataset";
 import type { Severity, Violation, ViolationCategory } from "@/contracts/violation";
-import type { DatasetSchemaDef, RuleContext } from "@/schema/dsl";
+import type { DatasetSchemaDef, RuleContext, SentinelMeaning } from "@/schema/dsl";
 import {
   coerceBoolean,
   coerceDate,
   coerceInteger,
   coerceNumber,
+  coerceOrdinal,
   coerceTime,
   coerceText,
 } from "./cellCoercers";
@@ -48,6 +49,7 @@ export function validateRows(
       const v = row.values[field.id];
       collectFieldViolations(row, field.id, field.label, field.type, v, field, rowViolations);
     }
+    checkGroupSelections(row, schema, rowViolations);
     for (const rule of schema.crossFieldRules) {
       try {
         if (rule.appliesTo(row, ctx) && rule.violates(row, ctx)) {
@@ -91,6 +93,9 @@ interface FieldMeta {
   range?: { min?: number; max?: number };
   dateRange?: { min?: string; max?: string };
   valueSet?: string[];
+  ordinalScale?: { values: number[]; labels?: Record<string, string> };
+  sentinels?: (string | number)[];
+  sentinelMeaning?: SentinelMeaning;
   unit?: string;
   label?: string;
 }
@@ -141,6 +146,25 @@ function collectFieldViolations(
           fieldId,
           rawValue: v,
           message: `${label} is not a valid whole number ("${String(v)}").`,
+        });
+        break;
+      }
+      // A sentinel literal that survived into values means the cell was not
+      // read through the schema's coercion. Report it rather than leaving a
+      // silent hole, and read it the way the schema declares.
+      if (meta.sentinels?.some((s) => typeof s === "number" && s === parsed)) {
+        const asZero = meta.sentinelMeaning === "zero";
+        out.push({
+          rowId: row.id,
+          ruleId: `F-${fieldId}`,
+          code: asZero ? "SENTINEL_NO_DATA" : "SENTINEL_NOT_APPLICABLE",
+          severity: "info",
+          category: "value-set",
+          fieldId,
+          rawValue: v,
+          message: asZero
+            ? `${label} was recorded as "${String(v)}" (no data), which counts as zero.`
+            : `${label} was recorded as "${String(v)}" (not applicable). It is excluded from totals and averages.`,
         });
         break;
       }
@@ -207,6 +231,36 @@ function collectFieldViolations(
       }
       break;
     }
+    case "ordinal": {
+      const parsed = coerceOrdinal(v);
+      if (parsed === null) {
+        out.push({
+          rowId: row.id,
+          ruleId: `F-${fieldId}`,
+          code: "INVALID_ORDINAL",
+          severity: sev,
+          category: "type",
+          fieldId,
+          rawValue: v,
+          message: `${label} is not a valid number ("${String(v)}").`,
+        });
+        break;
+      }
+      const allowed = meta.ordinalScale?.values;
+      if (allowed && allowed.length > 0 && !allowed.includes(parsed)) {
+        out.push({
+          rowId: row.id,
+          ruleId: `F-${fieldId}`,
+          code: "UNEXPECTED_ORDINAL",
+          severity: "warning",
+          category: "value-set",
+          fieldId,
+          rawValue: v,
+          message: `${label} has an unexpected value ("${String(v)}"). Expected one of ${allowed.join(", ")}.`,
+        });
+      }
+      break;
+    }
     case "text": {
       coerceText(v);
       break;
@@ -229,6 +283,62 @@ function collectFieldViolations(
     case "group": {
       // Group cells are boolean-like; tolerate and let rules reason over them.
       break;
+    }
+  }
+}
+
+/**
+ * Cross-check a select-multiple's parent cell against its one-hot children.
+ *
+ * ODK writes the parent's choice tokens ("A C") *and* one 0/1 column per
+ * option. The children are authoritative for analysis, so the parent is used
+ * only to catch drift: a token with no matching child column means the form
+ * offers an option this build cannot read, and a token/child disagreement means
+ * the two encodings disagree. Both are reported instead of being dropped.
+ */
+function checkGroupSelections(
+  row: NormalizedRow,
+  schema: DatasetSchemaDef,
+  out: Violation[],
+): void {
+  for (const field of schema.fields) {
+    if (field.type !== "group") continue;
+    const parentRaw = row.values[field.id];
+    if (typeof parentRaw !== "string" || parentRaw.trim() === "") continue;
+
+    const tokens = parentRaw.trim().split(/\s+/).filter(Boolean);
+    const suffixes = new Set((field.group?.options ?? []).map((o) => o.code));
+    const selected = new Set<string>();
+    for (const opt of field.group?.options ?? []) {
+      if (coerceBoolean(row.values[`${field.id}_${opt.code}`]) === true) selected.add(opt.code);
+    }
+
+    for (const token of tokens) {
+      if (!suffixes.has(token)) {
+        out.push({
+          rowId: row.id,
+          ruleId: `F-${field.id}`,
+          code: "UNMAPPED_GROUP_OPTION",
+          severity: "warning",
+          category: "value-set",
+          fieldId: field.id,
+          rawValue: token,
+          message: `${field.label} recorded option "${token}", which has no matching column in this form version. It cannot be analysed.`,
+        });
+        continue;
+      }
+      if (!selected.has(token)) {
+        out.push({
+          rowId: row.id,
+          ruleId: `F-${field.id}`,
+          code: "GROUP_OPTION_MISMATCH",
+          severity: "info",
+          category: "coherence",
+          fieldId: field.id,
+          rawValue: token,
+          message: `${field.label} lists "${token}" but its ${field.id}_${token} column is not ticked. The ticked columns were used.`,
+        });
+      }
     }
   }
 }

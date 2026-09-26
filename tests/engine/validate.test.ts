@@ -91,10 +91,20 @@ describe("cross-field rules: select-multiple internals", () => {
     expect(codes(r)).toContain("NONE_SELECTED_WITH_OPTIONS");
   });
   it("X023 warns when Others-specify text lacks a selected Others option", () => {
-    const r = validateRows([row({ G1_88: 1, G1_SP: "custom" })], schema);
+    // C10 offers both an "Others" (88) option and an "_SP" free-text column.
+    const r = validateRows([row({ C10_88: 1, C10_SP: "custom" })], schema);
     expect(codes(r)).not.toContain("SPECIFY_WITHOUT_OTHER");
-    const bad = validateRows([row({ G1_SP: "custom" })], schema);
+    const bad = validateRows([row({ C10_SP: "custom" })], schema);
     expect(codes(bad)).toContain("SPECIFY_WITHOUT_OTHER");
+  });
+  it("omits the rules for groups that cannot satisfy them", () => {
+    // G1 has neither an "Others" option nor an "_SP" column, so neither
+    // coherence rule can ever fire and neither is generated.
+    const codesForG1 = codes(
+      validateRows([row({ G1_SP: "custom", G1_99: 1, G1_A: 1 })], schema),
+    );
+    expect(codesForG1).not.toContain("SPECIFY_WITHOUT_OTHER");
+    expect(codesForG1).not.toContain("NONE_SELECTED_WITH_OPTIONS");
   });
 });
 

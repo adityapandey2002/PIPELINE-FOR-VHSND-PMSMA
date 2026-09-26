@@ -25,14 +25,24 @@ export async function parsePayload(payload: ParseRequest["payload"]): Promise<Pa
   const sheetName = payload.sheetName ?? wb.SheetNames[0];
   const sheet = wb.Sheets[sheetName];
   if (!sheet) throw new Error(`Workbook has no sheet "${sheetName}".`);
-  const objects = utils.sheet_to_json(sheet, { defval: null, raw: true }) as Array<
-    Record<string, unknown>
-  >;
-  if (objects.length === 0) throw new Error("The sheet is empty (no data rows).");
 
-  const { normalizeRows } = await import("@/schema/engine/normalize");
+  // Read as arrays, never as objects. `sheet_to_json` would treat the first
+  // row as keys -- collapsing the form's repeated "Others (Specify)" labels --
+  // and would ingest the physical code row as if it were data.
+  const aoa = utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    defval: null,
+    raw: true,
+    blankrows: false,
+  });
+  if (aoa.length === 0) throw new Error("The sheet is empty (no data rows).");
+
+  const { normalizeAoa } = await import("@/schema/engine/normalize");
+  const { buildHeaderMap } = await import("@/schema/engine/headerNormalizer");
   const { getDatasetSchema } = await import("@/schema");
   const schema = getDatasetSchema("2026.1", "vhsnd");
+  const header = buildHeaderMap();
+
   const source: ParseSource = {
     fileName: payload.fileName,
     sheetName,
@@ -40,7 +50,7 @@ export async function parsePayload(payload: ParseRequest["payload"]): Promise<Pa
     headerRow: 1,
     importedAt: payload.importedAt,
   };
-  return normalizeRows(objects, schema.fields, source);
+  return normalizeAoa(aoa, schema.fields, source, header.knownColumns, header.normalize);
 }
 
 const scope = workerScope();

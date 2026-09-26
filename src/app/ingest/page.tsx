@@ -28,6 +28,7 @@ export default function IngestPage() {
     warnings: number;
     columnsRecognized: number;
     missingCritical: string[];
+    collapsedColumns: { label: string; keptCode: string; count: number }[];
   } | null>(null);
 
   const onDrop = useCallback(
@@ -85,6 +86,7 @@ export default function IngestPage() {
             warnings: result.counts.warning,
             columnsRecognized,
             missingCritical,
+            collapsedColumns: parsed.collapsedColumns,
           });
           setInsights(computeDatasetInsights(dataset));
           setPhase("done");
@@ -160,6 +162,28 @@ export default function IngestPage() {
             >
               Continue to Review
             </button>
+          </div>
+        )}
+
+        {summary && summary.collapsedColumns.length > 0 && (
+          <div className="card" style={{ borderColor: "var(--warn)", background: "var(--warn-soft)" }}>
+            <h4 style={{ color: "var(--warn)", margin: 0 }}>
+              {summary.collapsedColumns.reduce((a, c) => a + c.count - 1, 0)} column(s) could not be
+              told apart
+            </h4>
+            <p className="small" style={{ marginBottom: 0 }}>
+              This file has a single header row, so repeated column titles cannot be matched to
+              separate fields. Only the first column of each title was read. Re-export from the form
+              with its second row of column codes to keep every column.
+            </p>
+            <ul className="small muted" style={{ margin: "6px 0 0" }}>
+              {summary.collapsedColumns.map((c) => (
+                <li key={`${c.label}-${c.keptCode}`}>
+                  &ldquo;{c.label}&rdquo; — {c.count} columns, all read as{" "}
+                  <span className="mono">{c.keptCode}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </section>

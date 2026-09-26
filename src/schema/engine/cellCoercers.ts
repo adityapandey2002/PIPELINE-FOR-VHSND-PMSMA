@@ -1,10 +1,35 @@
 import type { CellValue } from "@/contracts/dataset";
+import type { SentinelMeaning } from "@/schema/dsl";
 
 const EXCEL_EPOCH_OFFSET_DAYS = 25569; // days between 1899-12-30 and 1970-01-01
 
+/**
+ * Raw tokens that mean "no answer" in ODK/Excel exports. `Na` is Excel's
+ * rendering of a formula error, and NHM forms use it as a "not applicable"
+ * filler. Treated as missing so they never satisfy a "must be present" check.
+ * Deliberately excludes bare dashes, which appear in legitimate free text.
+ */
+const MISSING_TOKENS = new Set([
+  "na",
+  "n/a",
+  "nan",
+  "na.",
+  "nil",
+  "not applicable",
+  "not available",
+  "none given",
+]);
+
+/** True when a raw cell means "no answer recorded" rather than a real value. */
+export function isMissingToken(v: CellValue | undefined): boolean {
+  if (v === null || v === undefined) return true;
+  if (typeof v === "string") return MISSING_TOKENS.has(v.trim().toLowerCase());
+  return false;
+}
+
 /** Tolerant boolean coercion: yes/no, y/n, 1/0, true/false, ticked. */
 export function coerceBoolean(v: CellValue | undefined): boolean | null {
-  if (v === null || v === undefined) return null;
+  if (isMissingToken(v)) return null;
   if (typeof v === "boolean") return v;
   if (typeof v === "number") {
     if (v === 1) return true;
@@ -17,8 +42,38 @@ export function coerceBoolean(v: CellValue | undefined): boolean | null {
   return null;
 }
 
+/**
+ * Ordered-scale coercion. Returns the integer even when it is outside the
+ * declared scale so the validator can report it instead of losing it.
+ */
+export function coerceOrdinal(v: CellValue | undefined): number | null {
+  if (isMissingToken(v)) return null;
+  return coerceInteger(v);
+}
+
+/**
+ * Numeric coercion that reads a declared sentinel the way the schema says.
+ *
+ * A `no-data` sentinel (e.g. 99 for "question not applicable") becomes null so
+ * it never reaches a sum or a range check. A `zero` sentinel means the question
+ * was applicable but there is nothing to record, so it becomes a real 0 and
+ * stays in the totals.
+ */
+export function coerceSentinelNumber(
+  v: CellValue | undefined,
+  sentinels: (string | number)[] | undefined,
+  meaning: SentinelMeaning = "no-data",
+): number | null {
+  if (isMissingToken(v)) return null;
+  const parsed = coerceNumber(v);
+  if (parsed !== null && sentinels?.some((s) => typeof s === "number" && s === parsed)) {
+    return meaning === "zero" ? 0 : null;
+  }
+  return parsed;
+}
+
 export function coerceInteger(v: CellValue | undefined): number | null {
-  if (v === null || v === undefined || v === "") return null;
+  if (isMissingToken(v)) return null;
   let n: number;
   if (typeof v === "number") {
     n = v;
@@ -32,27 +87,35 @@ export function coerceInteger(v: CellValue | undefined): number | null {
 }
 
 export function coerceNumber(v: CellValue | undefined): number | null {
-  if (v === null || v === undefined || v === "") return null;
+  if (isMissingToken(v)) return null;
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
   const t = String(v).replace(/[,\s\u00a0]/g, "");
+  if (t === "") return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
 }
+
+/**
+ * A raw cell as it arrives from the sheet. `xlsx` is read with
+ * `cellDates: true`, so date/time cells can surface as real `Date` objects
+ * even though stored values are always primitives.
+ */
+export type RawCell = CellValue | Date | undefined;
 
 /**
  * Date coercion producing a day-only UTC "YYYY-MM-DD" string.
  * Excel serial numbers are converted via the 1900 epoch. JS Date inputs are
  * normalized to their UTC calendar day to avoid timezone shifts.
  */
-export function coerceDate(v: CellValue | undefined): string | null {
-  if (v === null || v === undefined || v === "") return null;
+export function coerceDate(v: RawCell): string | null {
+  if (v === null || v === undefined || isMissingToken(v as CellValue)) return null;
   const ms = valueToEpochMs(v);
   if (ms === null) return null;
   const d = new Date(ms);
   return d.toISOString().slice(0, 10);
 }
 
-function valueToEpochMs(v: CellValue | Date): number | null {
+function valueToEpochMs(v: RawCell): number | null {
   if (typeof v === "number") {
     // Excel serial date
     return Math.round((v - EXCEL_EPOCH_OFFSET_DAYS) * 86400 * 1000);
@@ -104,22 +167,57 @@ function valueToEpochMs(v: CellValue | Date): number | null {
   return null;
 }
 
-/** Time coercion: normalize "HH:MM[:SS...]" to "HH:MM:SS". */
-export function coerceTime(v: CellValue | undefined): string | null {
-  if (v === null || v === undefined || v === "") return null;
+/**
+ * Time coercion: normalize to "HH:MM:SS".
+ *
+ * Accepts bare "HH:MM[:SS]", Excel fractions of a day, and full datetimes that
+ * carry a 12-hour clock. The AM/PM marker is applied before the range check so
+ * "1:32:33 PM" becomes 13:32:33 rather than 01:32:33 -- without this, every
+ * afternoon session compares as ending before it started.
+ *
+ * A `Date` cell is read in UTC, matching `coerceDate`. `xlsx` builds these
+ * Dates from the Excel serial anchored at midnight UTC, so reading the clock in
+ * local time would disagree with the date read from the very same cell.
+ */
+export function coerceTime(v: RawCell): string | null {
+  if (v === null || v === undefined || isMissingToken(v as CellValue)) return null;
+  if (v instanceof Date) {
+    return [v.getUTCHours(), v.getUTCMinutes(), v.getUTCSeconds()].map(pad2).join(":");
+  }
   if (typeof v === "number") {
-    // Seconds (or milliseconds) since midnight.
-    const sec =
-      v > 86400 && v < 86400 * 1000 ? Math.floor(v / 1000) : Math.floor(v);
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    if (h > 23) return null;
+    let h: number;
+    let m: number;
+    let s: number;
+    if (v > 0 && v < 1) {
+      // Excel time cell: fraction of a day.
+      const totalSec = Math.round(v * 86400);
+      h = Math.floor(totalSec / 3600);
+      m = Math.floor((totalSec % 3600) / 60);
+      s = totalSec % 60;
+    } else {
+      // Seconds (or milliseconds) since midnight.
+      const sec = v > 86400 && v < 86400 * 1000 ? Math.floor(v / 1000) : Math.floor(v);
+      h = Math.floor(sec / 3600);
+      m = Math.floor((sec % 3600) / 60);
+      s = sec % 60;
+    }
+    if (h > 23 || m > 59 || s > 59) return null;
     return [h, m, s].map(pad2).join(":");
   }
-  const m = String(v)
-    .trim()
-    .match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+
+  const raw = String(v).trim();
+  const ampm = raw.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp])\.?\s*[Mm]\.?/);
+  if (ampm) {
+    let h = Number(ampm[1]);
+    const mm = Number(ampm[2]);
+    const ss = ampm[3] ? Number(ampm[3]) : 0;
+    if (h < 1 || h > 12 || mm > 59 || ss > 59) return null;
+    if (h === 12) h = 0;
+    if (ampm[4].toLowerCase() === "p") h += 12;
+    return [h, mm, ss].map(pad2).join(":");
+  }
+
+  const m = raw.match(/(?:^|\s)(\d{1,2}):(\d{2})(?::(\d{2}))?/);
   if (!m) return null;
   const h = Number(m[1]);
   const mm = Number(m[2]);
@@ -128,10 +226,39 @@ export function coerceTime(v: CellValue | undefined): string | null {
   return [h, mm, ss].map(pad2).join(":");
 }
 
+/** Minutes since midnight for a "HH:MM:SS" string, or null when unparseable. */
+export function timeToMinutes(t: string | null | undefined): number | null {
+  if (!t) return null;
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(t.trim());
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]) + (m[3] ? Number(m[3]) / 60 : 0);
+}
+
+/**
+ * Free-text coercion. Only a genuinely empty cell is missing here.
+ *
+ * The "no answer" token list is deliberately NOT applied: in a name, a
+ * designation or a remarks box, "NA" is text somebody typed, and blanking it
+ * would silently destroy real content.
+ */
 export function coerceText(v: CellValue | undefined): string | null {
-  if (v === null || v === undefined || v === "") return null;
+  if (v === null || v === undefined) return null;
   if (typeof v === "string") return v.trim() || null;
   return String(v).trim() || null;
+}
+
+/**
+ * Coded free text, where the form's "no answer" tokens are export artifacts
+ * rather than content. Used for short coded answers and closed choice sets.
+ */
+export function coerceCodedText(v: CellValue | undefined): string | null {
+  if (isMissingToken(v)) return null;
+  return coerceText(v);
+}
+
+/** Coercion for a closed set of answers. */
+export function coerceChoiceText(v: CellValue | undefined): string | null {
+  return coerceCodedText(v);
 }
 
 function pad2(n: number): string {

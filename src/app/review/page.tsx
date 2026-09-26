@@ -9,7 +9,7 @@ import { InsightPanel } from "@/components/InsightPanel";
 import { SummaryCard } from "@/components/SummaryCard";
 import type { CleanRow } from "@/contracts/resolution";
 import type { Severity } from "@/contracts/violation";
-import { severityRank } from "@/contracts/violation";
+import { severityRank, keyedViolations } from "@/contracts/violation";
 import { deriveCleanRows, unresolvedErrors } from "@/lib/derive";
 import { computeCleaningInsights, computeDatasetInsights } from "@/lib/insights";
 import { runValidate } from "@/lib/workers";
@@ -48,8 +48,13 @@ export default function ReviewPage() {
     if (filter === "all") return violations;
     return violations.filter((v) => v.severity === filter);
   }, [violations, filter]);
+  const listed = useMemo(() => keyedViolations(filtered), [filtered]);
 
   const unresolved = useMemo(() => unresolvedErrors(violations, resolutions), [violations, resolutions]);
+  const affectedRows = useMemo(
+    () => new Set(unresolved.map((v) => v.rowId)).size,
+    [unresolved],
+  );
   const clean = useMemo<{
     rows: CleanRow[];
     dropped: CleanRow[];
@@ -123,7 +128,6 @@ export default function ReviewPage() {
   const selectedViolations = selectedRowId ? violations.filter((v) => v.rowId === selectedRowId) : [];
   const statusCounts: Record<Severity, number> = { error: 0, warning: 0, info: 0 };
   for (const v of violations) statusCounts[v.severity] += 1;
-
   return (
     <AppShell>
       <section className="section">
@@ -168,8 +172,9 @@ export default function ReviewPage() {
         <InsightPanel
           title="Data insights"
           insights={[
-            { label: "Pending decisions", value: cleaningInsights.pendingRows, tone: cleaningInsights.pendingRows > 0 ? "warning" : "ok" },
-            { label: "Info notices", value: cleaningInsights.info },
+            { label: "Rows awaiting any decision", value: cleaningInsights.pendingRows, tone: cleaningInsights.pendingRows > 0 ? "warning" : "ok" },
+            { label: "Rows with unresolved errors", value: affectedRows, tone: affectedRows > 0 ? "error" : "ok" },
+            { label: "Info notices", value: statusCounts.info },
             { label: "Columns with data", value: datasetInsights.columnsPresent },
             { label: "Not in this file", value: datasetInsights.columnsMissing, tone: "neutral" },
             { label: "Present but empty", value: datasetInsights.columnsEmpty, tone: datasetInsights.columnsEmpty > 0 ? "warning" : "ok" },
@@ -213,8 +218,9 @@ export default function ReviewPage() {
         <section className="card" style={{ borderColor: "var(--error)", background: "var(--error-soft)" }}>
           <h4 style={{ color: "var(--error)", margin: 0 }}>{unresolved.length} errors still need a decision</h4>
           <p className="small" style={{ marginBottom: 0 }}>
-            Rows with unresolved errors are held out of the cleaned dataset and the report. Keep (with a
-            reason), override the value, or drop each row below.
+            {affectedRows} of {dataset.totalRows.toLocaleString("en-IN")} rows carry an unresolved
+            error. They still flow into the cleaned dataset and the report until you keep them (with a
+            reason), override the value, or drop them.
           </p>
         </section>
       )}
@@ -251,11 +257,11 @@ export default function ReviewPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((v) => {
+                {listed.map(({ violation: v, key }) => {
                   const status = resolutions[v.rowId]?.status ?? "pending";
                   return (
                     <tr
-                      key={`${v.rowId}-${v.code}`}
+                      key={key}
                       style={{ cursor: "pointer" }}
                       onClick={() => setSelectedRowId(v.rowId === selectedRowId ? null : v.rowId)}
                     >

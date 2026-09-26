@@ -24,6 +24,7 @@ export interface CleanRow {
 export function applyResolution(
   row: { id: string; values: Record<string, CellValue> },
   resolution: RowResolution | undefined,
+  coerce?: (fieldId: string, raw: CellValue) => CellValue,
 ): { keep: boolean; values: Record<string, CellValue> } {
   if (!resolution || resolution.status === "pending") {
     return { keep: true, values: row.values };
@@ -32,9 +33,16 @@ export function applyResolution(
     return { keep: false, values: row.values };
   }
   if (resolution.status === "override" && resolution.overrides) {
+    const merged = { ...row.values, ...resolution.overrides };
+    // Re-read every override through the schema so a stored replacement can
+    // never carry a shape its column cannot hold.
     return {
       keep: true,
-      values: { ...row.values, ...resolution.overrides },
+      values: coerce
+        ? Object.fromEntries(
+            Object.entries(merged).map(([k, v]) => [k, coerce(k, v)]),
+          )
+        : merged,
     };
   }
   return { keep: true, values: row.values };

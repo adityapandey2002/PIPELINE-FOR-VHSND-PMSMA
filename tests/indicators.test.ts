@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CleanRow } from "@/contracts/resolution";
 import { evaluateIndicator, suggestCharts, VHSND_INDICATORS } from "@/schema/indicators";
+import { getDatasetSchema } from "@/schema";
 
 function clean(values: Record<string, unknown>): CleanRow {
   return { rowId: "r", values: values as Record<string, string | number | boolean | null> };
@@ -44,6 +45,27 @@ describe("evaluateIndicator", () => {
     const def = VHSND_INDICATORS.find((i) => i.id === "bp-systolic")!;
     const series = evaluateIndicator([clean({ H1BP: 1 }), clean({ H1BP: 2 }), clean({ H1BP: 3 })], def);
     expect(series.samples.sort()).toEqual([1, 2, 3]);
+  });
+});
+
+describe("indicator value fields are aggregable", () => {
+  const schema = getDatasetSchema("2026.1", "vhsnd");
+  const byId = new Map(schema.fields.map((f) => [f.id, f]));
+  const AGGREGABLE = ["integer", "number", "ordinal"];
+
+  it("never sums a boolean, date, time, text, choice or group field", () => {
+    const offenders = VHSND_INDICATORS.filter((i) => i.aggregation === "sum")
+      .map((i) => ({ id: i.id, valueField: i.valueField, type: byId.get(i.valueField)?.type }))
+      .filter((x) => x.type !== undefined && !AGGREGABLE.includes(x.type));
+    expect(offenders).toEqual([]);
+  });
+
+  it("counts PNC attendance via the H3A_1 count, not the H3A flag", () => {
+    const def = VHSND_INDICATORS.find((i) => i.id === "pnc-lactating")!;
+    expect(byId.get("H3A")!.type).toBe("boolean");
+    expect(def.valueField).toBe("H3A_1");
+    const series = evaluateIndicator([clean({ H3A: true, H3A_1: 4 }), clean({ H3A: false, H3A_1: 0 })], def);
+    expect(series.points[0].value).toBe(4);
   });
 });
 
