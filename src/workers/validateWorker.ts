@@ -9,6 +9,7 @@ export type ValidateRequest = {
     rows: NormalizedRow[];
     schemaVersion: string;
     refDate?: string | null;
+    presentColumns?: string[];
   };
 };
 
@@ -19,7 +20,10 @@ export type ValidateResponse =
 export async function validatePayload(payload: ValidateRequest["payload"]): Promise<ValidateResult> {
   const { getDatasetSchema } = await import("@/schema");
   const schema = getDatasetSchema(payload.schemaVersion, "vhsnd");
-  const options: ValidateOptions = payload.refDate !== undefined ? { refDate: payload.refDate } : {};
+  const options: ValidateOptions = {
+    ...(payload.refDate !== undefined ? { refDate: payload.refDate } : {}),
+    ...(payload.presentColumns !== undefined ? { presentColumns: payload.presentColumns } : {}),
+  };
   return validateRows(payload.rows, schema, options);
 }
 

@@ -47,7 +47,7 @@ describe("violation identity: one row can raise the same code on several fields"
   it("separates several findings raised on the same field", () => {
     // The group parent cell names two option tokens this form version cannot
     // map: one UNMAPPED_GROUP_OPTION per token, on the same column.
-    const { violations } = validateRows([row({ G1: "D Q", G1_A: 1 })], schema);
+    const { violations } = validateRows([row({ G1: "Z Q", G1_A: 1 })], schema);
     const unmapped = violations.filter((v) => v.code === "UNMAPPED_GROUP_OPTION");
     expect(unmapped).toHaveLength(2);
     const keys = keysOf(keyedViolations(violations));
@@ -55,7 +55,7 @@ describe("violation identity: one row can raise the same code on several fields"
   });
 
   it("stays unique when the same field reports the same code twice", () => {
-    const { violations } = validateRows([row({ G1: "D D", G1_A: 1 })], schema);
+    const { violations } = validateRows([row({ G1: "Z Z", G1_A: 1 })], schema);
     const unmapped = violations.filter((v) => v.code === "UNMAPPED_GROUP_OPTION");
     expect(unmapped).toHaveLength(2);
     const keys = keysOf(keyedViolations(violations));
@@ -120,7 +120,10 @@ describe("parse and validate agree on a declared sentinel", () => {
       sizeBytes: buffer.byteLength,
       importedAt: "2026-09-26T00:00:00.000Z",
     });
-    const { counts } = validateRows(parsed.rows, schema, { refDate: "2025-11-19" });
+    const { counts } = validateRows(parsed.rows, schema, {
+      refDate: "2025-11-19",
+      presentColumns: parsed.presentColumns,
+    });
     beforeAllErrors = counts.error;
     beforeAllWarnings = counts.warning;
   });
@@ -129,20 +132,29 @@ describe("parse and validate agree on a declared sentinel", () => {
     expect(parsed.rows[0].values.ANM2).toBe(0);
     expect(parsed.rows[0].values.ANM3).toBe(0);
     expect(parsed.rows[2].values.ANM2).toBe(1);
-    const { violations, counts } = validateRows(parsed.rows, schema, { refDate: "2025-11-19" });
+    const { violations, counts } = validateRows(parsed.rows, schema, {
+      refDate: "2025-11-19",
+      presentColumns: parsed.presentColumns,
+    });
     expect(violations.filter((v) => v.code.startsWith("SENTINEL_"))).toHaveLength(0);
     expect(counts.info).toBe(0);
     expect(counts.error + counts.warning + counts.info).toBe(violations.length);
   });
 
   it("adds no error or warning to the fixture", () => {
-    const { counts } = validateRows(parsed.rows, schema, { refDate: "2025-11-19" });
+    const { counts } = validateRows(parsed.rows, schema, {
+      refDate: "2025-11-19",
+      presentColumns: parsed.presentColumns,
+    });
     expect(counts.error).toBe(beforeAllErrors);
     expect(counts.warning).toBe(beforeAllWarnings);
   });
 
   it("keeps rowId+code collisions keyed uniquely when they do occur", () => {
-    const { violations } = validateRows(parsed.rows, schema, { refDate: "2025-11-19" });
+    const { violations } = validateRows(parsed.rows, schema, {
+      refDate: "2025-11-19",
+      presentColumns: parsed.presentColumns,
+    });
     const keys = keysOf(keyedViolations(violations));
     expect(new Set(keys).size).toBe(violations.length);
   });

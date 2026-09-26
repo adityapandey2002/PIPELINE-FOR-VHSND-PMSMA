@@ -82,6 +82,7 @@ export default function ReviewPage() {
         rows: dataset.rows,
         schemaVersion: dataset.schemaVersion,
         refDate: null,
+        presentColumns: dataset.presentColumns,
       });
       await setValidation({
         violations: result.violations,

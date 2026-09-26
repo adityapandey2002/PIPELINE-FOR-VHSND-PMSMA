@@ -50,6 +50,7 @@ export const useDatasetStore = create<DatasetState>((set, get) => ({
       totalRows: parsed.rows.length,
       rows: parsed.rows,
       skippedRows: parsed.skippedRows,
+      presentColumns: parsed.presentColumns,
     };
     await saveDataset(snapshot);
     set({ dataset: snapshot, validation: null, error: null, loading: false });

@@ -21,7 +21,7 @@ describe("sample data end-to-end", () => {
     expect(parsed.rows.length).toBe(160);
   });
 
-  it("recognises the full 252-column spec spread", async () => {
+  it("recognises the full spec spread", async () => {
     const buf = readFileSync(SAMPLE);
     const buffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
     const parsed = await parsePayload({
@@ -31,8 +31,12 @@ describe("sample data end-to-end", () => {
       importedAt: "2026-07-14T00:00:00.000Z",
     });
     // Every known code is present in the source; unknowns would break the map.
+    // The demo workbook predates the G1 Hepatitis_B option, so it is the one
+    // declared column it legitimately does not ship.
     const { VHSND_COLUMNS } = await import("@/schema/columns-vhsnd");
+    const notInSample = new Set(["G1_D"]);
     for (const col of VHSND_COLUMNS) {
+      if (notInSample.has(col.code)) continue;
       expect(parsed.presentColumns).toContain(col.code);
     }
   });

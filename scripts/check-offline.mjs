@@ -45,6 +45,10 @@ function exists(p) {
 
 function* walk(dir) {
   for (const entry of readdirSync(dir)) {
+    // `next dev` writes scratch chunks to out/dev. They are gitignored and
+    // never part of the static export, and they link to dev-only tooling, so
+    // they must not be able to fail the shipping gate.
+    if (dir === OUT && entry === "dev") continue;
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) yield* walk(full);
     else yield full;

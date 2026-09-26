@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NormalizedRow } from "@/contracts/dataset";
 import { referenceDate, validateRows } from "@/schema/engine/validate";
+import { normalizeRows } from "@/schema/engine/normalize";
 import { getDatasetSchema, SCHEMA_VERSION } from "@/schema";
 
 const schema = getDatasetSchema(SCHEMA_VERSION, "vhsnd");
@@ -128,6 +129,67 @@ describe("rule robustness", () => {
     // H18 is coerced to null by "maybe" -> appliesTo is false, so nothing crashes.
     const r = validateRows([row({ H18: "maybe" })], schema);
     expect(codes(r)).not.toContain("RULE_EVALUATION_ERROR");
+  });
+});
+
+describe("Hepatitis_B (G1 option D)", () => {
+  it("is a declared G1 option, so listing D is no longer unmapped", () => {
+    const r = validateRows([row({ G1: "A D", G1_A: 1, G1_D: 1 })], schema);
+    expect(codes(r)).not.toContain("UNMAPPED_GROUP_OPTION");
+    expect(codes(r)).not.toContain("GROUP_OPTION_MISMATCH");
+  });
+  it("does not call D unticked when its column is absent from the export", () => {
+    const r = validateRows([row({ G1: "A D", G1_A: 1 })], schema, {
+      presentColumns: ["G1", "G1_A"],
+    });
+    expect(codes(r)).not.toContain("UNMAPPED_GROUP_OPTION");
+    expect(codes(r)).not.toContain("GROUP_OPTION_MISMATCH");
+  });
+  it("still calls D unticked when the column exists but is blank", () => {
+    const r = validateRows([row({ G1: "A D", G1_A: 1 })], schema, {
+      presentColumns: ["G1", "G1_A", "G1_D"],
+    });
+    expect(codes(r)).toContain("GROUP_OPTION_MISMATCH");
+  });
+});
+
+describe("tele-consultation reason field is not contradictory data", () => {
+  it("accepts H26 reasons recorded alongside H24 = no", () => {
+    const r = validateRows([row({ H24: "no", H26: "Internet issue" })], schema);
+    expect(codes(r)).not.toContain("TELECONSULT_DATA_WITHOUT_CONSULT");
+  });
+  it("still flags a real count recorded against H24 = no", () => {
+    expect(codes(validateRows([row({ H24: "no", H25: 2 })], schema))).toContain(
+      "TELECONSULT_DATA_WITHOUT_CONSULT",
+    );
+    expect(codes(validateRows([row({ H24: "no", H27: 1 })], schema))).toContain(
+      "TELECONSULT_DATA_WITHOUT_CONSULT",
+    );
+  });
+});
+
+describe("free-text reason fields survive missing-token normalisation", () => {
+  it("keeps an H19 reason that reads like a missing-token value", () => {
+    const kept = normalizeRows(
+      [{ H18: "no", H19: "Not available" }],
+      schema.fields,
+      {
+        fileName: "f.csv",
+        sheetName: "Sheet1",
+        sizeBytes: 10,
+        headerRow: 0,
+        importedAt: "2026-01-01T00:00:00.000Z",
+      },
+    );
+    expect(kept.rows[0].values.H19).toBe("Not available");
+    expect(codes(validateRows(kept.rows, schema))).not.toContain(
+      "SYRINGE_NOT_CUT_REASON_REQUIRED",
+    );
+  });
+  it("still reports a genuinely absent H19 reason", () => {
+    expect(codes(validateRows([row({ H18: "no" })], schema))).toContain(
+      "SYRINGE_NOT_CUT_REASON_REQUIRED",
+    );
   });
 });
 

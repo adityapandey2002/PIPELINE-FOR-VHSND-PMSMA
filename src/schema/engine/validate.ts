@@ -14,6 +14,12 @@ import {
 export interface ValidateOptions {
   /** Deterministic reference day (YYYY-MM-DD). Defaults to the latest SubmissionDate. */
   refDate?: string | null;
+  /**
+   * Schema field ids whose physical column existed in the parsed export. A group
+   * option whose child column is absent cannot be cross-checked, so it is never
+   * reported as unticked. Omit to check every declared option.
+   */
+  presentColumns?: readonly string[];
 }
 
 export interface ValidateResult {
@@ -42,6 +48,7 @@ export function validateRows(
   };
   const byRow = new Map<string, Violation[]>();
   const counts: ValidateResult["counts"] = { error: 0, warning: 0, info: 0 };
+  const presentColumns = options.presentColumns ? new Set(options.presentColumns) : null;
 
   for (const row of rows) {
     const rowViolations: Violation[] = [];
@@ -49,7 +56,7 @@ export function validateRows(
       const v = row.values[field.id];
       collectFieldViolations(row, field.id, field.label, field.type, v, field, rowViolations);
     }
-    checkGroupSelections(row, schema, rowViolations);
+    checkGroupSelections(row, schema, presentColumns, rowViolations);
     for (const rule of schema.crossFieldRules) {
       try {
         if (rule.appliesTo(row, ctx) && rule.violates(row, ctx)) {
@@ -299,6 +306,7 @@ function collectFieldViolations(
 function checkGroupSelections(
   row: NormalizedRow,
   schema: DatasetSchemaDef,
+  presentColumns: ReadonlySet<string> | null,
   out: Violation[],
 ): void {
   for (const field of schema.fields) {
@@ -328,6 +336,7 @@ function checkGroupSelections(
         continue;
       }
       if (!selected.has(token)) {
+        if (presentColumns && !presentColumns.has(`${field.id}_${token}`)) continue;
         out.push({
           rowId: row.id,
           ruleId: `F-${field.id}`,

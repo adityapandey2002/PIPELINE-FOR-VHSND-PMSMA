@@ -31,6 +31,12 @@ export interface DatasetSnapshot {
   rows: NormalizedRow[];
   /** Rows intentionally excluded at parse time (e.g. fully empty rows). */
   skippedRows: number;
+  /**
+   * Schema field ids whose physical column was present in the source export.
+   * Absent on snapshots stored before this field existed, which makes group
+   * option cross-checks fall back to considering every declared option.
+   */
+  presentColumns?: string[];
 }
 
 export interface DatasetSummary {

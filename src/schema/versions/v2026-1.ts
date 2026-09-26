@@ -244,7 +244,7 @@ function simpleFields(): FieldDef[] {
   yn("H15");
   yn("H16");
   yn("H18");
-  txt("H19");
+  freeTxt("H19");
   yn("H20");
   yn("H21");
   yn("H22");
@@ -533,11 +533,11 @@ export const VHSND_CROSS_FIELD_RULES = toCrossField([
     severity: "warning",
     category: "coherence",
     description:
-      "No tele-consultation happened, yet tele-consultation counts/counts-attended were recorded.",
+      "No tele-consultation happened, yet tele-consultation counts were recorded.",
     appliesTo: (r) => b(r, "H24") === false,
-    violates: (r) => isDefined(r, "H25") || isDefined(r, "H26") || (n(r, "H27") ?? 0) > 0,
+    violates: (r) => isDefined(r, "H25") || (n(r, "H27") ?? 0) > 0,
     describe: () =>
-      "Tele-consultation = no, but H25/H26/H27 tele-consultation data is recorded.",
+      "Tele-consultation = no, but an H25/H27 tele-consultation count is recorded.",
   },
   {
     id: "X018",

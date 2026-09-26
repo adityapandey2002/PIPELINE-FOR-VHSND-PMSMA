@@ -16,6 +16,7 @@ export interface ValidateTask {
   rows: NormalizedRow[];
   schemaVersion: string;
   refDate?: string | null;
+  presentColumns?: string[];
 }
 
 export class WorkerUnavailableError extends Error {
@@ -148,6 +149,7 @@ export function runValidate(task: ValidateTask, onProgress?: (phase: string) => 
         rows: task.rows,
         schemaVersion: task.schemaVersion,
         refDate: task.refDate ?? undefined,
+        presentColumns: task.presentColumns,
       };
       worker.postMessage({ type: "validate", payload });
     } else {
@@ -161,6 +163,7 @@ export function runValidate(task: ValidateTask, onProgress?: (phase: string) => 
             rows: task.rows,
             schemaVersion: task.schemaVersion,
             refDate: task.refDate ?? undefined,
+            presentColumns: task.presentColumns,
           }),
         )
         .then(({ violations, counts, byRow }) => {

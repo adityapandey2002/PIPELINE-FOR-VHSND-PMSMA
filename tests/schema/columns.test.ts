@@ -3,8 +3,16 @@ import { VHSND_COLUMNS, columnLabel } from "@/schema/columns-vhsnd";
 import { canonicalSchemaJson, computeSchemaHash, getDatasetSchema, SCHEMA_VERSION } from "@/schema";
 
 describe("column registry", () => {
-  it("contains the 252 physical columns from the survey spec", () => {
-    expect(VHSND_COLUMNS.length).toBe(252);
+  it("contains the 253 physical columns from the survey spec", () => {
+    expect(VHSND_COLUMNS.length).toBe(253);
+  });
+
+  it("declares the Hepatitis_B option as G1_D", () => {
+    const schema = getDatasetSchema(SCHEMA_VERSION, "vhsnd");
+    const g1 = schema.fields.find((f) => f.id === "G1");
+    const codes = (g1?.group?.options ?? []).map((o) => o.code);
+    expect(codes).toEqual(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]);
+    expect(columnLabel("G1_D")).toBe("Hepatitis_B");
   });
 
   it("has no duplicate codes", () => {

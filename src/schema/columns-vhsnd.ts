@@ -429,6 +429,10 @@ export const VHSND_COLUMNS: ColumnEntry[] = [
     "label": "OPV"
   },
   {
+    "code": "G1_D",
+    "label": "Hepatitis_B"
+  },
+  {
     "code": "G1_E",
     "label": "Rotavirus"
   },

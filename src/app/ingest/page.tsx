@@ -68,6 +68,7 @@ export default function IngestPage() {
             rows: dataset.rows,
             schemaVersion: dataset.schemaVersion,
             refDate: null,
+            presentColumns: parsed.presentColumns,
           });
           await setValidation({
             violations: result.violations,

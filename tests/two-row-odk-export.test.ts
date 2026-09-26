@@ -185,20 +185,38 @@ describe("two-row ODK export (DATA_EX_SHAPE.csv)", () => {
 
   it("raises no false clinical, sequence or teleconsult violations", () => {
     const schema = getDatasetSchema("2026.1", "vhsnd");
-    const { violations } = validateRows(parsed.rows, schema, { refDate: "2025-11-19" });
+    const { violations } = validateRows(parsed.rows, schema, {
+      refDate: "2025-11-19",
+      presentColumns: parsed.presentColumns,
+    });
     const codes = violations.map((v: Violation) => v.code);
     expect(codes).not.toContain("PNC_SAMPLED_GT_ATTENDED");
     expect(codes).not.toContain("END_BEFORE_START");
     expect(codes).not.toContain("TELECONSULT_DATA_WITHOUT_CONSULT");
+    expect(codes).not.toContain("GROUP_OPTION_MISMATCH");
     expect(codes).not.toContain("INVALID_BOOLEAN");
     expect(codes).not.toContain("INVALID_INTEGER");
   });
 
-  it("surfaces the genuinely unmapped group option instead of hiding it", () => {
+  it("reads the D option as the declared Hepatitis_B vaccine", () => {
     const schema = getDatasetSchema("2026.1", "vhsnd");
-    const { violations } = validateRows(parsed.rows, schema, { refDate: "2025-11-19" });
+    const { violations } = validateRows(parsed.rows, schema, {
+      refDate: "2025-11-19",
+      presentColumns: parsed.presentColumns,
+    });
+    const codes = violations.map((v: Violation) => v.code);
+    expect(codes).not.toContain("UNMAPPED_GROUP_OPTION");
+  });
+
+  it("surfaces a genuinely unmapped group option instead of hiding it", () => {
+    const schema = getDatasetSchema("2026.1", "vhsnd");
+    const synthetic = [{ id: "r0", sourceRow: 0, values: { G1: "A Z", G1_A: true } }];
+    const { violations } = validateRows(synthetic, schema, {
+      refDate: "2025-11-19",
+      presentColumns: ["G1", "G1_A"],
+    });
     const unmapped = violations.filter((v: Violation) => v.code === "UNMAPPED_GROUP_OPTION");
     expect(unmapped).toHaveLength(1);
-    expect(unmapped[0].message).toContain('"D"');
+    expect(unmapped[0].message).toContain('"Z"');
   });
 });
