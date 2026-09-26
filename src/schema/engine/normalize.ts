@@ -32,10 +32,11 @@ export interface ParsedSheet {
   /** canonical codes actually present in the source. */
   presentColumns: string[];
   /**
-   * Columns dropped because their label resolved to a code an earlier column
-   * already claimed. Non-empty only for single-header sheets, where repeated
-   * labels such as the form's 11 "Others (Specify)" columns cannot be told
-   * apart. Reported so the loss is never silent.
+   * Columns dropped because a later column resolved to the same code as an
+   * earlier one: either a label repeated across a single-header sheet (the
+   * form's 11 "Others (Specify)" columns) or a code repeated in the form's own
+   * code row (the export's trailing SubmissionDate). Reported so the loss is
+   * never silent.
    */
   collapsedColumns: CollapsedColumn[];
   meta: SourceMeta;

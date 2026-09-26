@@ -135,6 +135,7 @@ describe("two-row ODK export (DATA_EX_SHAPE.csv)", () => {
     expect(collapsed.collapsedColumns).toEqual([
       { label: "Others (Specify)", keptCode: "A2_SP", count: 3 },
     ]);
+    expect(collapsed.meta.headerRow).toBe(1);
     expect(collapsed.rows[0].values.A2_SP).toBe("alpha");
   });
 
