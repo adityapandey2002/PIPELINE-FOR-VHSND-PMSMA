@@ -37,10 +37,10 @@ export function computeDatasetInsights(dataset: DatasetSnapshot | null): Dataset
   const total = dataset.totalRows;
   const filledMap = new Map<string, number>();
   const uniqueMap = new Map<string, Set<CellValue>>();
-  const presentCodes = new Set<string>();
+  const withValues = new Set<string>();
   for (const row of dataset.rows) {
     for (const [code, val] of Object.entries(row.values)) {
-      presentCodes.add(code);
+      withValues.add(code);
       if (val !== null && val !== undefined && val !== "") {
         filledMap.set(code, (filledMap.get(code) ?? 0) + 1);
         if (!uniqueMap.has(code)) uniqueMap.set(code, new Set());
@@ -59,10 +59,15 @@ export function computeDatasetInsights(dataset: DatasetSnapshot | null): Dataset
     .sort((a, b) => b.fillRate - a.fillRate || a.code.localeCompare(b.code));
 
   const expectedCodes = VHSND_COLUMNS.map((c) => c.code);
-  const missingCodes = expectedCodes.filter((c) => !presentCodes.has(c));
-  const emptyPresent = Array.from(presentCodes).filter(
-    (c) => expectedCodes.includes(c) && !filledMap.has(c),
-  );
+  // A column can be in the export and still hold no value, so presence has to
+  // come from the parser's column list. Snapshots stored before that list was
+  // persisted fall back to "holds some value", which cannot see an all-blank
+  // column and so folds it into the missing count.
+  const physicalCodes: ReadonlySet<string> = dataset.presentColumns
+    ? new Set(dataset.presentColumns)
+    : withValues;
+  const missingCodes = expectedCodes.filter((c) => !physicalCodes.has(c));
+  const emptyPresent = expectedCodes.filter((c) => physicalCodes.has(c) && !filledMap.has(c));
 
   return {
     totalRows: total,
