@@ -33,10 +33,10 @@ export interface ParsedSheet {
   presentColumns: string[];
   /**
    * Columns dropped because a later column resolved to the same code as an
-   * earlier one: either a label repeated across a single-header sheet (the
-   * form's 11 "Others (Specify)" columns) or a code repeated in the form's own
-   * code row (the export's trailing SubmissionDate). Reported so the loss is
-   * never silent.
+   * earlier one — a label repeated across a single-header sheet (the form's 11
+   * "Others (Specify)" columns) or a code repeated in the form's own code row
+   * (the export's trailing SubmissionDate). Only repeats whose data differs
+   * from the column kept are listed, so an exact copy raises no warning.
    */
   collapsedColumns: CollapsedColumn[];
   meta: SourceMeta;
@@ -299,6 +299,16 @@ export function normalizeAoa(
   // code -> first column index that carries it
   const firstIndexFor = new Map<string, number>();
   const collapsed = new Map<string, { label: string; keptCode: string; count: number }>();
+
+  const cellKey = (v: unknown) => (v === null || v === undefined || v === "" ? "" : String(v));
+  const isRedundantCopy = (kept: number, dup: number) => {
+    for (let r = layout.dataStart; r < aoa.length; r++) {
+      const cells = aoa[r] ?? [];
+      if (cellKey(cells[kept]) !== cellKey(cells[dup])) return false;
+    }
+    return true;
+  };
+
   layout.codes.forEach((code, i) => {
     const c = code.trim();
     if (c === "") return;
@@ -307,6 +317,9 @@ export function normalizeAoa(
       firstIndexFor.set(c, i);
       return;
     }
+    // An exact copy of the column already kept loses no data, so there is
+    // nothing to warn about.
+    if (isRedundantCopy(seen, i)) return;
     const label = layout.labels[i]?.trim() || c;
     const entry = collapsed.get(label);
     if (entry) entry.count += 1;

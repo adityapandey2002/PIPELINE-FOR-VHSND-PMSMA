@@ -106,12 +106,37 @@ describe("two-row ODK export (DATA_EX_SHAPE.csv)", () => {
     ]);
   });
 
-  it("collapses only the duplicate SubmissionDate, and reports it", () => {
+  it("keeps one SubmissionDate and stays quiet when the repeat is an exact copy", () => {
     // The code row keeps the 11 "Others (Specify)" columns apart. The export
-    // repeats SubmissionDate, so exactly that one is dropped.
-    expect(parsed.collapsedColumns).toEqual([
+    // also repeats SubmissionDate as its last column, but value for value, so
+    // the second copy is dropped with nothing lost and nothing to warn about.
+    expect(parsed.presentColumns.filter((c) => c === "SubmissionDate")).toHaveLength(1);
+    expect(parsed.collapsedColumns).toEqual([]);
+  });
+
+  it("still reports a repeat whose data differs from the column kept", () => {
+    const header = buildHeaderMap();
+    const sheet = normalizeAoa(
+      [
+        ["SubmissionDate", "SubmissionDate"],
+        ["SubmissionDate", "SubmissionDate"],
+        ["2026-01-01", "2026-02-01"],
+      ],
+      getDatasetSchema("2026.1", "vhsnd").fields,
+      {
+        fileName: "f.csv",
+        sheetName: "S",
+        sizeBytes: 0,
+        headerRow: 2,
+        importedAt: "2026-09-26T00:00:00.000Z",
+      },
+      header.knownColumns,
+      header.normalize,
+    );
+    expect(sheet.collapsedColumns).toEqual([
       { label: "SubmissionDate", keptCode: "SubmissionDate", count: 2 },
     ]);
+    expect(sheet.rows[0].values.SubmissionDate).toBe("2026-01-01");
   });
 
   it("reports instead of silently dropping repeated single-header labels", () => {
