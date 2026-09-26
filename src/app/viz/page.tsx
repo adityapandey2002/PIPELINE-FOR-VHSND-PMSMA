@@ -24,6 +24,7 @@ export default function VizPage() {
   const activeDatasetId = useWorkflowStore((s) => s.activeDatasetId);
   const dataset = useDatasetStore((s) => s.dataset);
   const loading = useDatasetStore((s) => s.loading);
+  const validation = useDatasetStore((s) => s.validation);
   const loadDataset = useDatasetStore((s) => s.load);
   const resolutions = useResolutionStore((s) => s.byRow);
   const loadResolutions = useResolutionStore((s) => s.load);
@@ -31,6 +32,8 @@ export default function VizPage() {
   const loadCharts = useChartStore((s) => s.load);
   const addChart = useChartStore((s) => s.addChart);
   const removeChart = useChartStore((s) => s.removeChart);
+
+  const violations = useMemo(() => validation?.violations ?? [], [validation]);
 
   const [selectedId, setSelectedId] = useState<string>(VHSND_INDICATORS[0]?.id ?? "");
   const [mode, setMode] = useState<"indicator" | "comparison">("indicator");
@@ -50,8 +53,8 @@ export default function VizPage() {
 
   const cleanRows = useMemo(() => {
     if (!dataset) return [];
-    return deriveCleanRows(dataset, resolutions).rows;
-  }, [dataset, resolutions]);
+    return deriveCleanRows(dataset, violations, resolutions).rows;
+  }, [dataset, violations, resolutions]);
 
   const selectedIndicator = useMemo(
     () => VHSND_INDICATORS.find((i) => i.id === selectedId) ?? VHSND_INDICATORS[0],
@@ -81,8 +84,8 @@ export default function VizPage() {
   const activeTitle = mode === "comparison" ? selectedComparison.label : indicator.label;
 
   const vizInsights = useMemo(
-    () => computeVizInsights(dataset, resolutions, activeSeries),
-    [dataset, resolutions, activeSeries],
+    () => computeVizInsights(dataset, violations, resolutions, activeSeries),
+    [dataset, violations, resolutions, activeSeries],
   );
   const datasetInsights = useMemo(() => computeDatasetInsights(dataset), [dataset]);
 

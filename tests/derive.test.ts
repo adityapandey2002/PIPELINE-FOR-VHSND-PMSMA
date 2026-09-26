@@ -46,16 +46,33 @@ describe("deriveCleanRows", () => {
       r1: { rowId: "r1", status: "override", overrides: { H1BP: 9 }, justification: "keying error" },
       r2: { rowId: "r2", status: "keep", keptViolations: ["X001"] },
     };
-    const { rows, dropped } = deriveCleanRows(dataset, resolutions);
+    const { rows, dropped } = deriveCleanRows(dataset, [], resolutions);
     const ids = rows.map((r) => r.rowId);
     expect(ids).toEqual(["r1", "r2"]);
     expect(rows.find((r) => r.rowId === "r1")?.values.H1BP).toBe(9);
     expect(dropped.map((r) => r.rowId)).toEqual(["r0"]);
   });
 
-  it("counts pending rows until a decision exists", () => {
-    const { pending } = deriveCleanRows(dataset, {});
-    expect(pending.length).toBe(3);
+  it("counts only rows carrying an unresolved error as pending", () => {
+    const errors: Violation[] = [
+      { rowId: "r1", ruleId: "X001", code: "HIGH_BP", severity: "error", category: "sequence", message: "m" },
+      { rowId: "r2", ruleId: "X002", code: "VISIT", severity: "error", category: "date", message: "m" },
+    ];
+    const awaiting = deriveCleanRows(dataset, errors, {});
+    expect(awaiting.pending.map((r) => r.rowId)).toEqual(["r1", "r2"]);
+    expect(awaiting.rows.map((r) => r.rowId)).toEqual(["r0", "r1", "r2"]);
+
+    const decided = deriveCleanRows(
+      dataset,
+      errors,
+      {
+        r1: { rowId: "r1", status: "keep", keptViolations: ["__all"] },
+        r2: { rowId: "r2", status: "keep", keptViolations: ["__all"] },
+      },
+    );
+    expect(decided.pending).toEqual([]);
+
+    expect(deriveCleanRows(dataset, [], {}).pending).toEqual([]);
   });
 
   it("re-reads an override through the schema instead of storing the raw text", () => {
@@ -68,14 +85,14 @@ describe("deriveCleanRows", () => {
       r0: { rowId: "r0", status: "override", overrides: { H1BP: "7" }, justification: "typo" },
       r1: { rowId: "r1", status: "override", overrides: { H1BP: "abc" }, justification: "typo" },
     };
-    const { rows } = deriveCleanRows(vhsnd, resolutions);
+    const { rows } = deriveCleanRows(vhsnd, [], resolutions);
     expect(rows.find((r) => r.rowId === "r0")?.values.H1BP).toBe(7);
     // Unreadable text cannot enter the clean dataset as a number.
     expect(rows.find((r) => r.rowId === "r1")?.values.H1BP ?? null).toBeNull();
   });
 
   it("leaves values untouched when the dataset schema cannot be resolved", () => {
-    const { rows } = deriveCleanRows(dataset, {
+    const { rows } = deriveCleanRows(dataset, [], {
       r0: { rowId: "r0", status: "override", overrides: { H1BP: "7" }, justification: "typo" },
     });
     expect(rows.find((r) => r.rowId === "r0")?.values.H1BP).toBe("7");

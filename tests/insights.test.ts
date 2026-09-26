@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { computeDatasetInsights } from "@/lib/insights";
+import { computeCleaningInsights, computeDatasetInsights, computeVizInsights } from "@/lib/insights";
 import type { DatasetSnapshot, NormalizedRow } from "@/contracts/dataset";
+import type { Violation } from "@/contracts/violation";
+import type { IndicatorSeries } from "@/schema/indicators";
 
 function snapshot(
   rows: Record<string, string | number | boolean>[],
@@ -46,5 +48,60 @@ describe("column presence accounting", () => {
   it("still adds up for a snapshot with no persisted column list", () => {
     const i = computeDatasetInsights(snapshot([{ C1: "yes" }]))!;
     expect(i.columnsPresent + i.columnsEmpty + i.columnsMissing).toBe(i.columnsExpected);
+  });
+});
+
+const emptySeries: IndicatorSeries = {
+  points: [],
+  samples: [],
+  timeLabels: [],
+  stats: { cardinality: 0, dateSpanDays: 0, missingRate: 0, numericShape: "flat" },
+};
+
+const errorOn = (rowId: string, code: string): Violation => ({
+  rowId,
+  ruleId: "X001",
+  code,
+  severity: "error",
+  category: "sequence",
+  message: "m",
+});
+
+describe("pending rows", () => {
+  const ds = snapshot([{ C1: "yes" }, { C1: "no" }, { C1: "yes" }]);
+  const errors = [errorOn("r1", "E")];
+
+  it("counts rows with unresolved errors, not untouched rows", () => {
+    const before = computeCleaningInsights(ds, errors, {})!;
+    expect(before.totalRows).toBe(3);
+    expect(before.pendingRows).toBe(1);
+    expect(before.unresolvedErrors).toBe(1);
+    expect(computeCleaningInsights(ds, [], {})!.pendingRows).toBe(0);
+  });
+
+  it("reaches zero once the error is acknowledged or the row is dropped", () => {
+    const kept = computeCleaningInsights(ds, errors, {
+      r1: { rowId: "r1", status: "keep", keptViolations: ["__all"], justification: "ok" },
+    })!;
+    expect(kept.pendingRows).toBe(0);
+    expect(kept.unresolvedErrors).toBe(0);
+
+    const dropped = computeCleaningInsights(ds, errors, {
+      r1: { rowId: "r1", status: "drop", justification: "dup" },
+    })!;
+    expect(dropped.pendingRows).toBe(0);
+    expect(dropped.unresolvedErrors).toBe(0);
+  });
+
+  it("leaves the tile at zero while an error is still open on a warning-only row", () => {
+    const warning: Violation = { ...errorOn("r2", "W"), severity: "warning" };
+    expect(computeCleaningInsights(ds, [warning], {})!.pendingRows).toBe(0);
+  });
+
+  it("matches the report tile the viz page reads", () => {
+    const viz = computeVizInsights(ds, errors, {}, emptySeries)!;
+    const review = computeCleaningInsights(ds, errors, {})!;
+    expect(viz.pendingRows).toBe(review.pendingRows);
+    expect(viz.totalRows).toBe(review.totalRows);
   });
 });

@@ -55,7 +55,7 @@ describe("ODK label export (DATASET_1.xlsx)", () => {
       rows: parsed.rows,
       skippedRows: parsed.skippedRows,
     };
-    const clean = deriveCleanRows(snapshot, {}).rows;
+    const clean = deriveCleanRows(snapshot, [], {}).rows;
     expect(clean.length).toBe(14);
 
     const sessions = VHSND_INDICATORS.find((i) => i.id === "sessions")!;

@@ -60,13 +60,13 @@ export default function ReviewPage() {
     dropped: CleanRow[];
     pendingCount: number;
   }>(() => {
-    const derived = deriveCleanRows(dataset, resolutions);
+    const derived = deriveCleanRows(dataset, violations, resolutions);
     return {
       rows: derived.rows,
       dropped: derived.dropped,
       pendingCount: derived.pending.length,
     };
-  }, [dataset, resolutions]);
+  }, [dataset, violations, resolutions]);
 
   const cleaningInsights = useMemo(
     () => computeCleaningInsights(dataset, violations, resolutions),
@@ -173,7 +173,6 @@ export default function ReviewPage() {
         <InsightPanel
           title="Data insights"
           insights={[
-            { label: "Rows awaiting any decision", value: cleaningInsights.pendingRows, tone: cleaningInsights.pendingRows > 0 ? "warning" : "ok" },
             { label: "Rows with unresolved errors", value: affectedRows, tone: affectedRows > 0 ? "error" : "ok" },
             { label: "Info notices", value: statusCounts.info },
             { label: "Columns with data", value: datasetInsights.columnsPresent },

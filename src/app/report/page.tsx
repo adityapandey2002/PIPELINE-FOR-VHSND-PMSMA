@@ -43,8 +43,8 @@ export default function ReportPage() {
   }, [activeDatasetId, loadDataset, loadResolutions, loadCharts]);
 
   const clean = useMemo(
-    () => deriveCleanRows(dataset, resolutions),
-    [dataset, resolutions],
+    () => deriveCleanRows(dataset, validation?.violations ?? [], resolutions),
+    [dataset, validation, resolutions],
   );
 
   const unresolved = useMemo(

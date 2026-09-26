@@ -8,6 +8,8 @@ import { VHSND_COLUMNS } from "@/schema/columns-vhsnd";
 import { cleanRowsToCsv } from "@/export/csv";
 import { buildReportContext } from "@/export/reportContext";
 import type { DatasetSnapshot } from "@/contracts/dataset";
+import type { CleanRow, RowResolution } from "@/contracts/resolution";
+import type { Violation } from "@/contracts/violation";
 
 const SAMPLE = resolve(process.cwd(), "sample-data/DATASET_1.xlsx");
 
@@ -35,7 +37,35 @@ async function cleanDataset1() {
     rows: parsed.rows,
     skippedRows: parsed.skippedRows,
   };
-  return { parsed, clean: deriveCleanRows(snapshot, {}).rows };
+  return { parsed, clean: deriveCleanRows(snapshot, [], {}).rows };
+}
+
+function err(rowId: string, code: string): Violation {
+  return { rowId, ruleId: "X001", code, severity: "error", category: "sequence", message: "m" };
+}
+
+function reportCtx(
+  rows: CleanRow[],
+  violations: Violation[] = [],
+  resolutions: Record<string, RowResolution> = {},
+) {
+  return buildReportContext({
+    datasetName: "DATASET_1",
+    fileName: "DATASET_1.xlsx",
+    importedAt: "2026-09-24T00:00:00.000Z",
+    totalRows: rows.length,
+    rows,
+    resolutions,
+    violations,
+    counts: {
+      error: violations.filter((v) => v.severity === "error").length,
+      warning: violations.filter((v) => v.severity === "warning").length,
+      info: 0,
+    },
+    indicatorDefs: VHSND_INDICATORS,
+    charts: [],
+    schemaVersion: "2026.1",
+  });
 }
 
 describe("ODK label-headed import (DATASET_1.xlsx)", () => {
@@ -61,20 +91,29 @@ describe("ODK label-headed import (DATASET_1.xlsx)", () => {
     const csv = cleanRowsToCsv(clean);
     expect(csv.split("\r\n").length).toBe(clean.length + 1);
 
-    const ctx = await buildReportContext({
-      datasetName: "DATASET_1",
-      fileName: "DATASET_1.xlsx",
-      importedAt: "2026-09-24T00:00:00.000Z",
-      totalRows: clean.length,
-      rows: clean,
-      resolutions: {},
-      violations: [],
-      counts: { error: 0, warning: 0, info: 0 },
-      indicatorDefs: VHSND_INDICATORS,
-      charts: [],
-      schemaVersion: "2026.1",
-    });
+    const ctx = await reportCtx(clean);
     expect(ctx.indicators.length).toBe(VHSND_INDICATORS.length);
     expect(ctx.manifest).toMatch(/^[0-9a-f]{64}$/);
+    expect(ctx.summary.pendingRows).toBe(0);
+  });
+
+  it("counts pending rows as the rows that still carry an error", async () => {
+    const { clean } = await cleanDataset1();
+    const violations = [
+      err(clean[0].rowId, "E"),
+      err(clean[1].rowId, "E"),
+      err(clean[1].rowId, "F"),
+    ];
+
+    const open = await reportCtx(clean, violations);
+    expect(open.summary.pendingRows).toBe(2);
+    expect(open.summary.unresolvedErrors).toBe(3);
+
+    const decided = await reportCtx(clean, violations, {
+      [clean[0].rowId]: { rowId: clean[0].rowId, status: "keep", keptViolations: ["__all"], justification: "ok" },
+      [clean[1].rowId]: { rowId: clean[1].rowId, status: "drop", justification: "duplicate" },
+    });
+    expect(decided.summary.pendingRows).toBe(0);
+    expect(decided.summary.unresolvedErrors).toBe(0);
   });
 });

@@ -12,7 +12,7 @@ export interface DerivedClean {
   rows: CleanRow[];
   /** Rows the user dropped. */
   dropped: CleanRow[];
-  /** Rows still awaiting a decision (when unresolved errors exist). */
+  /** Kept rows that still carry an unresolved error, i.e. rows awaiting a decision. */
   pending: CleanRow[];
 }
 
@@ -39,6 +39,7 @@ function coercerFor(dataset: DatasetSnapshot): FieldCoercer | null {
 
 export function deriveCleanRows(
   dataset: DatasetSnapshot | null,
+  violations: Violation[],
   resolutions: Record<string, RowResolution>,
 ): DerivedClean {
   if (!dataset) return { rows: [], dropped: [], pending: [] };
@@ -46,18 +47,17 @@ export function deriveCleanRows(
   const rows: CleanRow[] = [];
   const dropped: CleanRow[] = [];
   const pending: CleanRow[] = [];
+  const awaiting = new Set(unresolvedErrors(violations, resolutions).map((v) => v.rowId));
   for (const row of dataset.rows) {
     const res = resolutions[row.id];
     const outcome = applyResolution(row, res, coercer?.coerce);
     const clean: CleanRow = { rowId: row.id, values: outcome.values };
     if (!outcome.keep) {
       dropped.push(clean);
-    } else if (!res || res.status === "pending") {
-      pending.push(clean);
-      rows.push(clean);
-    } else {
-      rows.push(clean);
+      continue;
     }
+    if (awaiting.has(row.id)) pending.push(clean);
+    rows.push(clean);
   }
   return { rows, dropped, pending };
 }

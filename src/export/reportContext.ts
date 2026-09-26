@@ -75,8 +75,9 @@ export async function buildReportContext(input: BuildContextInput): Promise<Repo
 
   const keptRows = input.rows.length;
   const droppedRows = Object.values(input.resolutions).filter((r) => r.status === "drop").length;
-  const pendingRows = Object.values(input.resolutions).filter((r) => r.status === "pending").length;
-  const unresolved = unresolvedErrors(input.violations, input.resolutions).length;
+  const unresolvedList = unresolvedErrors(input.violations, input.resolutions);
+  const unresolved = unresolvedList.length;
+  const pendingRows = new Set(unresolvedList.map((v) => v.rowId)).size;
 
   const indicatorValues = input.indicatorDefs.map((def) => {
     const series = evaluateIndicator(input.rows, def);

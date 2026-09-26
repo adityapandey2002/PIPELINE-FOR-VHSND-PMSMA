@@ -102,7 +102,7 @@ export function computeCleaningInsights(
   resolutions: Record<string, RowResolution>,
 ): CleaningInsights | null {
   if (!dataset) return null;
-  const clean = deriveCleanRows(dataset, resolutions);
+  const clean = deriveCleanRows(dataset, violations, resolutions);
   const unresolved = unresolvedErrors(violations, resolutions);
   const byCategory: Record<string, number> = {};
   for (const v of violations) byCategory[v.category] = (byCategory[v.category] ?? 0) + 1;
@@ -134,11 +134,12 @@ export interface VizInsights {
 
 export function computeVizInsights(
   dataset: DatasetSnapshot | null,
+  violations: Violation[],
   resolutions: Record<string, RowResolution>,
   series: IndicatorSeries,
 ): VizInsights | null {
   if (!dataset) return null;
-  const clean = deriveCleanRows(dataset, resolutions);
+  const clean = deriveCleanRows(dataset, violations, resolutions);
   const s = series.samples;
   const numericSummary = s.length
     ? {

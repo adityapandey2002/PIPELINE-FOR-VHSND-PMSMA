@@ -7,7 +7,6 @@ import { getDatasetSchema } from "@/schema";
 import { isDirectChildOf } from "@/schema/engine/groupChildren";
 import { buildHeaderMap } from "@/schema/engine/headerNormalizer";
 import { normalizeAoa, coerceFieldValue } from "@/schema/engine/normalize";
-import { VHSND_COLUMNS } from "@/schema/columns-vhsnd";
 import type { ParsedSheet } from "@/schema/engine/normalize";
 import type { Violation } from "@/contracts/violation";
 
