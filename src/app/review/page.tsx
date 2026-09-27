@@ -175,7 +175,7 @@ export default function ReviewPage() {
           insights={[
             { label: "Rows with unresolved errors", value: affectedRows, tone: affectedRows > 0 ? "error" : "ok" },
             { label: "Info notices", value: statusCounts.info },
-            { label: "Columns with data", value: datasetInsights.columnsPresent },
+            { label: "Columns with data", value: datasetInsights.columnsWithData },
             { label: "Not in this file", value: datasetInsights.columnsMissing, tone: "neutral" },
             { label: "Present but empty", value: datasetInsights.columnsEmpty, tone: datasetInsights.columnsEmpty > 0 ? "warning" : "ok" },
             { label: "Sparse (<50%)", value: datasetInsights.sparseColumns.length, tone: datasetInsights.sparseColumns.length > 0 ? "warning" : "ok" },
@@ -207,7 +207,7 @@ export default function ReviewPage() {
               <p className="small muted" style={{ margin: 0 }}>
                 {datasetInsights.columnsMissing === 0
                   ? "All expected columns present."
-                  : `${datasetInsights.columnsPresent + datasetInsights.columnsEmpty} of ${datasetInsights.columnsExpected} schema fields are in this export (${datasetInsights.columnsPresent} with data, ${datasetInsights.columnsEmpty} present but empty). The remaining ${datasetInsights.columnsMissing} are simply not in the file — nothing was dropped.`}
+                  : `${datasetInsights.columnsPresent + datasetInsights.columnsEmpty} of ${datasetInsights.columnsExpected} schema fields are in this export (${datasetInsights.columnsPresent} with data, ${datasetInsights.columnsEmpty} present but empty). The remaining ${datasetInsights.columnsMissing} are simply not in the file — nothing was dropped.${datasetInsights.columnsWithData > datasetInsights.columnsPresent ? ` A further ${datasetInsights.columnsWithData - datasetInsights.columnsPresent} columns carry data under titles this form version does not map.` : ""}`}
               </p>
             </div>
           </div>

@@ -49,6 +49,17 @@ describe("column presence accounting", () => {
     const i = computeDatasetInsights(snapshot([{ C1: "yes" }]))!;
     expect(i.columnsPresent + i.columnsEmpty + i.columnsMissing).toBe(i.columnsExpected);
   });
+
+  it("keeps a column the schema does not know out of the schema totals", () => {
+    const ds = snapshot([{ C1: "yes", "A title this form version does not map": "x" }], [
+      "C1",
+      "A title this form version does not map",
+    ]);
+    const i = computeDatasetInsights(ds)!;
+    expect(i.columnsPresent).toBe(1);
+    expect(i.columnsWithData).toBe(2);
+    expect(i.columnsPresent + i.columnsEmpty + i.columnsMissing).toBe(i.columnsExpected);
+  });
 });
 
 const emptySeries: IndicatorSeries = {

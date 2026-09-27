@@ -18,6 +18,8 @@ export interface DatasetInsights {
   skippedRows: number;
   /** Schema columns that carry at least one value. */
   columnsPresent: number;
+  /** Every column carrying a value, including titles the schema does not know. */
+  columnsWithData: number;
   /** Schema columns present in the file but with no values at all. */
   columnsEmpty: number;
   /** Schema columns that do not appear in the file at all (expected for partial exports). */
@@ -68,11 +70,13 @@ export function computeDatasetInsights(dataset: DatasetSnapshot | null): Dataset
     : withValues;
   const missingCodes = expectedCodes.filter((c) => !physicalCodes.has(c));
   const emptyPresent = expectedCodes.filter((c) => physicalCodes.has(c) && !filledMap.has(c));
+  const schemaPresent = expectedCodes.filter((c) => physicalCodes.has(c) && filledMap.has(c));
 
   return {
     totalRows: total,
     skippedRows: dataset.skippedRows,
-    columnsPresent: filledMap.size,
+    columnsPresent: schemaPresent.length,
+    columnsWithData: filledMap.size,
     columnsEmpty: emptyPresent.length,
     columnsMissing: missingCodes.length,
     columnsExpected: expectedCodes.length,

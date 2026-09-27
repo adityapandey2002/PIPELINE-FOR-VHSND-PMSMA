@@ -25,6 +25,7 @@ export default function IngestPage() {
   const [error, setError] = useState<string | null>(null);
   const [insights, setInsights] = useState<DatasetInsights | null>(null);
   const [previous, setPrevious] = useState<DatasetSummary | null>(null);
+  const [showAllSparse, setShowAllSparse] = useState(false);
   const [summary, setSummary] = useState<{
     rows: number;
     errors: number;
@@ -51,6 +52,7 @@ export default function IngestPage() {
       setSummary(null);
       setInsights(null);
       setPrevious(null);
+      setShowAllSparse(false);
 
       file
         .arrayBuffer()
@@ -237,7 +239,7 @@ export default function IngestPage() {
           insights={[
             { label: "Rows imported", value: insights.totalRows },
             { label: "Rows skipped (empty)", value: insights.skippedRows },
-            { label: "Columns in this file", value: insights.columnsPresent },
+            { label: "Columns in this file", value: insights.columnsWithData },
             {
               label: "Not in this file",
               value: insights.columnsMissing,
@@ -293,11 +295,22 @@ export default function IngestPage() {
               </h4>
               <p className="small muted" style={{ margin: 0 }}>
                 {insights.sparseColumns
-                  .slice(0, 20)
+                  .slice(0, showAllSparse ? insights.sparseColumns.length : 20)
                   .map((c) => `${c.code} (${(c.fillRate * 100).toFixed(0)}%)`)
                   .join(", ")}
-                {insights.sparseColumns.length > 20 && ` …and ${insights.sparseColumns.length - 20} more`}
               </p>
+              {insights.sparseColumns.length > 20 && (
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  style={{ marginTop: 8 }}
+                  onClick={() => setShowAllSparse((v) => !v)}
+                >
+                  {showAllSparse
+                    ? "Show fewer"
+                    : `Show all ${insights.sparseColumns.length} sparse columns`}
+                </button>
+              )}
             </>
           )}
         </InsightPanel>

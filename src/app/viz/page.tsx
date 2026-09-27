@@ -209,7 +209,7 @@ export default function VizPage() {
             { label: "Cardinality", value: vizInsights.cardinality },
             { label: "Missing rate", value: `${(vizInsights.missingRate * 100).toFixed(0)}%`, tone: vizInsights.missingRate > 0.5 ? "warning" : "ok" },
             { label: "Date span (days)", value: vizInsights.dateSpanDays },
-            { label: "Columns with data", value: datasetInsights.columnsPresent },
+            { label: "Columns with data", value: datasetInsights.columnsWithData },
             { label: "Not in this file", value: datasetInsights.columnsMissing, tone: "neutral" },
             { label: "Present but empty", value: datasetInsights.columnsEmpty, tone: datasetInsights.columnsEmpty > 0 ? "warning" : "ok" },
           ]}
