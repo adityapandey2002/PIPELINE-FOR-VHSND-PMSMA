@@ -6,13 +6,13 @@ import {
   b,
   cmpDay,
   d,
+  dt,
   fmtDay,
   groupAny,
   groupHasData,
   groupSelected,
   isDefined,
   n,
-  t,
 } from "@/schema/engine/accessors";
 import type { NormalizedRow } from "@/contracts/dataset";
 
@@ -150,7 +150,8 @@ function simpleFields(): FieldDef[] {
   const freeTxt = (id: string) => f(id, "text", { freeText: true });
   const choose = (id: string) => f(id, "choice");
   const dat = (id: string, required = false) => f(id, "date", { required });
-  const tim = (id: string) => f(id, "time");
+  /** An ODK instance timestamp: date and clock, compared as an instant. */
+  const stamp = (id: string) => f(id, "datetime");
   /** Count where the form writes a magic number for "none recorded", a real zero. */
   const cntOrNoData = (id: string, sentinel: number) =>
     list.push(countWithSentinel(id, labelOf(id), sentinel, { meaning: "zero" }));
@@ -159,8 +160,8 @@ function simpleFields(): FieldDef[] {
     list.push(ordinalField(id, labelOf(id), [0, 1, 2], labels));
 
   f("SubmissionDate", "date", { label: "Submission Date" });
-  tim("starttime");
-  tim("endtime");
+  stamp("starttime");
+  stamp("endtime");
   choose("A2");
   freeTxt("A2_SP");
   txt("A3");
@@ -579,10 +580,10 @@ export const VHSND_CROSS_FIELD_RULES = toCrossField([
     severity: "error",
     category: "sequence",
     description: "The form end time cannot be earlier than its start time.",
-    appliesTo: (r) => t(r, "starttime") !== null && t(r, "endtime") !== null,
-    violates: (r) => (t(r, "endtime") ?? "") < (t(r, "starttime") ?? ""),
+    appliesTo: (r) => dt(r, "starttime") !== null && dt(r, "endtime") !== null,
+    violates: (r) => (dt(r, "endtime") ?? "") < (dt(r, "starttime") ?? ""),
     describe: (r) =>
-      `End time (${fmtDay(t(r, "endtime"))}) is before start time (${fmtDay(t(r, "starttime"))}).`,
+      `End time (${fmtDay(dt(r, "endtime"))}) is before start time (${fmtDay(dt(r, "starttime"))}).`,
   },
 
   /* ----- select-multiple internal coherence (generic over groups) ----- */

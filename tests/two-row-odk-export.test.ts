@@ -79,12 +79,12 @@ describe("two-row ODK export (DATA_EX_SHAPE.csv)", () => {
     expect(isDirectChildOf("C10_1", "C10_1_A")).toBe(true);
   });
 
-  it("applies the 12-hour clock to session times", () => {
+  it("keeps the calendar day when it converts 12-hour session times", () => {
     const t = parsed.rows.map((r) => [r.values.starttime, r.values.endtime]);
     expect(t).toEqual([
-      ["12:55:40", "13:32:33"],
-      ["13:56:20", "16:31:48"],
-      ["12:38:22", "16:11:21"],
+      ["2025-11-12T12:55:40", "2025-11-12T13:32:33"],
+      ["2025-11-19T13:56:20", "2025-11-19T16:31:48"],
+      ["2025-11-19T12:38:22", "2025-11-19T16:11:21"],
     ]);
   });
 

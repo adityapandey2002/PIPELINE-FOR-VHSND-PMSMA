@@ -226,6 +226,35 @@ export function coerceTime(v: RawCell): string | null {
   return [h, mm, ss].map(pad2).join(":");
 }
 
+/**
+ * Date-time coercion: normalize to "YYYY-MM-DDTHH:MM:SS" so an instant
+ * compares as a string.
+ *
+ * Unlike `coerceTime` this keeps the calendar day, which is what lets X021
+ * tell a session that ran into the next day from one that genuinely ended
+ * before it started. A cell carrying only a clock is pinned to 1970-01-01 so
+ * pure time-of-day comparisons behave exactly as they did before.
+ */
+export function coerceDateTime(v: RawCell): string | null {
+  if (v === null || v === undefined || isMissingToken(v as CellValue)) return null;
+  if (v instanceof Date) return v.toISOString().slice(0, 19);
+  if (typeof v === "number") {
+    if (v > 1) {
+      const ms = Math.round((v - EXCEL_EPOCH_OFFSET_DAYS) * 86400 * 1000);
+      return new Date(ms).toISOString().slice(0, 19);
+    }
+    const time = coerceTime(v);
+    return time === null ? null : `1970-01-01T${time}`;
+  }
+  const raw = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(raw)) return raw;
+  const time = coerceTime(raw);
+  if (time === null) return null;
+  const ms = valueToEpochMs(raw);
+  if (ms === null) return `1970-01-01T${time}`;
+  return `${new Date(ms).toISOString().slice(0, 10)}T${time}`;
+}
+
 /** Minutes since midnight for a "HH:MM:SS" string, or null when unparseable. */
 export function timeToMinutes(t: string | null | undefined): number | null {
   if (!t) return null;

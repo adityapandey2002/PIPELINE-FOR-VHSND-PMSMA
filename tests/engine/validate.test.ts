@@ -86,6 +86,20 @@ describe("cross-field rules: date sanity", () => {
     const r = validateRows([row({ starttime: "09:00:00", endtime: "08:30:00" })], schema);
     expect(codes(r)).toContain("END_BEFORE_START");
   });
+  it("X021 stays quiet when a session runs past midnight into later days", () => {
+    const r = validateRows(
+      [row({ starttime: "Nov 5, 2025 12:18:45 PM", endtime: "Nov 7, 2025 12:11:25 PM" })],
+      schema,
+    );
+    expect(codes(r)).not.toContain("END_BEFORE_START");
+  });
+  it("X021 flags an end that falls on an earlier day than the start", () => {
+    const r = validateRows(
+      [row({ starttime: "Nov 7, 2025 12:18:45 PM", endtime: "Nov 5, 2025 12:11:25 PM" })],
+      schema,
+    );
+    expect(codes(r)).toContain("END_BEFORE_START");
+  });
 });
 
 describe("cross-field rules: select-multiple internals", () => {

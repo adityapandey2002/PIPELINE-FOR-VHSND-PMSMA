@@ -1,5 +1,5 @@
 import type { NormalizedRow, CellValue } from "@/contracts/dataset";
-import { coerceBoolean, coerceDate, coerceInteger, coerceNumber, coerceText, coerceTime } from "./cellCoercers";
+import { coerceBoolean, coerceDate, coerceDateTime, coerceInteger, coerceNumber, coerceText, coerceTime } from "./cellCoercers";
 
 export function getRaw(row: NormalizedRow, code: string): CellValue | undefined {
   return row.values[code];
@@ -23,6 +23,10 @@ export function d(row: NormalizedRow, code: string): string | null {
 
 export function t(row: NormalizedRow, code: string): string | null {
   return coerceTime(getRaw(row, code));
+}
+
+export function dt(row: NormalizedRow, code: string): string | null {
+  return coerceDateTime(getRaw(row, code));
 }
 
 export function s(row: NormalizedRow, code: string): string | null {

@@ -7,6 +7,8 @@ export type FieldType =
   | "number"
   | "date"
   | "time"
+  /** An instant, kept as "YYYY-MM-DDTHH:MM:SS" so cross-day ranges compare right. */
+  | "datetime"
   | "text"
   | "choice"
   | "group"

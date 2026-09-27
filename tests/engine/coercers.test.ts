@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   coerceBoolean,
   coerceDate,
+  coerceDateTime,
   coerceInteger,
   coerceNumber,
   coerceText,
@@ -110,6 +111,29 @@ describe("coerceTime", () => {
     const cell = new Date(Date.UTC(2026, 8, 25, 18, 45, 0));
     expect(coerceDate(cell)).toBe("2026-09-25");
     expect(coerceTime(cell)).toBe("18:45:00");
+  });
+});
+
+describe("coerceDateTime", () => {
+  it("keeps the calendar day alongside the clock", () => {
+    expect(coerceDateTime("Nov 5, 2025 12:18:45 PM")).toBe("2025-11-05T12:18:45");
+    expect(coerceDateTime("2025-11-07T12:11:25")).toBe("2025-11-07T12:11:25");
+  });
+  it("pins a clock-only cell to a common day so times still compare", () => {
+    expect(coerceDateTime("09:00:00")).toBe("1970-01-01T09:00:00");
+    expect(coerceDateTime("8:30")).toBe("1970-01-01T08:30:00");
+  });
+  it("reads a full Excel serial as date and clock together", () => {
+    const serial = 46001.5;
+    expect(coerceDateTime(serial)).toBe("2025-12-10T12:00:00");
+  });
+  it("keeps a Date cell on the same clock as coerceDate and coerceTime", () => {
+    const cell = new Date(Date.UTC(2026, 8, 25, 18, 45, 0));
+    expect(coerceDateTime(cell)).toBe("2026-09-25T18:45:00");
+  });
+  it("rejects values with no clock", () => {
+    expect(coerceDateTime("2025-11-05")).toBeNull();
+    expect(coerceDateTime("")).toBeNull();
   });
 });
 

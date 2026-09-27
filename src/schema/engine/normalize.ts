@@ -7,6 +7,7 @@ import {
   coerceChoiceText,
   coerceCodedText,
   coerceDate,
+  coerceDateTime,
   coerceNumber,
   coerceOrdinal,
   coerceSentinelNumber,
@@ -72,6 +73,8 @@ export function coerceFieldValue(type: string, v: unknown, def?: FieldDef): Cell
       return coerceDate(v as CellValue);
     case "time":
       return coerceTime(v as CellValue);
+    case "datetime":
+      return coerceDateTime(v as CellValue);
     case "text":
       // Hand-typed boxes keep "NA" as content; coded answers treat it as filler.
       return def?.freeText ? coerceText(v as CellValue) : coerceCodedText(v as CellValue);
