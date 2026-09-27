@@ -188,6 +188,16 @@ describe("service & readiness percentages", () => {
     expect(res.series.points.find((p) => p.name.includes("Time on vials"))!.value).toBe(0);
     expect(res.insight).toContain("0%");
   });
+
+  it("counts good and bad practice answers instead of flagging them", () => {
+    const rows = [row({ H18: "Yes", H20: "Yes", H21: "Yes" }), row({ H18: "Yes", H20: "No", H21: "No" })];
+    const res = COMPARISONS.find((c) => c.id === "good-vs-bad-practice")!.compute(rows);
+    expect(res.kind).toBe("bar-horizontal");
+    expect(res.series.points.find((p) => p.name.includes("BCG/MR in 4 hrs - good"))!.value).toBe(1);
+    expect(res.series.points.find((p) => p.name.includes("BCG/MR in 4 hrs - bad"))!.value).toBe(1);
+    expect(res.insight).toContain("4 good-practice and 2 bad-practice");
+    expect(res.columnsUsed).toEqual(["H18", "H20", "H21"]);
+  });
 });
 
 describe("supply chain logics", () => {
@@ -322,8 +332,8 @@ describe("vulnerable demographics logics", () => {
 });
 
 describe("registry integrity", () => {
-  it("has 20 comparisons across 6 categories", () => {
-    expect(COMPARISONS).toHaveLength(20);
+  it("has 21 comparisons across 6 categories", () => {
+    expect(COMPARISONS).toHaveLength(21);
     const cats = new Set(COMPARISONS.map((c) => c.category));
     expect(cats.size).toBe(COMPARISON_CATEGORIES.length);
     for (const cat of COMPARISON_CATEGORIES) {

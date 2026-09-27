@@ -954,6 +954,39 @@ export const COMPARISONS: ComparisonDef[] = [
       );
     },
   },
+  {
+    id: "good-vs-bad-practice",
+    category: COMPARISON_CATEGORIES[1],
+    label: "21. Good practice vs bad practice counts",
+    description:
+      "Counts, not violations: how many rows answered Yes (good practice) and No (bad practice) on the hygiene questions H18, H20 and H21.",
+    compute: (rows) => {
+      const codes = ["H18", "H20", "H21"];
+      const { present, missing } = presentCodes(rows, codes);
+      const points: SeriesPoint[] = [];
+      const breakdown: string[] = [];
+      let goodTotal = 0;
+      let badTotal = 0;
+      for (const code of codes) {
+        const good = countTrue(rows, code);
+        const answered = rows.filter((r) => stdBool(r.values[code]) !== null).length;
+        const bad = answered - good;
+        goodTotal += good;
+        badTotal += bad;
+        points.push({ name: `${columnShort(code)} - good (Yes)`, value: good });
+        points.push({ name: `${columnShort(code)} - bad (No)`, value: bad });
+        breakdown.push(`${code}: ${good} good / ${bad} bad`);
+      }
+      return mkResult(
+        "bar-horizontal",
+        points,
+        `Across ${rows.length} row(s): ${goodTotal} good-practice and ${badTotal} bad-practice answers (${breakdown.join(", ")}).`,
+        undefined,
+        present,
+        missing,
+      );
+    },
+  },
 ];
 
 /* Short display labels for bare codes (fall back to the code itself). */

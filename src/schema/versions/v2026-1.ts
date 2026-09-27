@@ -514,18 +514,6 @@ export const VHSND_CROSS_FIELD_RULES = toCrossField([
     violates: (r) => !isDefined(r, "H19"),
     describe: () => "Syringe not cut with hub cutter (H18 = no) but no reason (H19) recorded.",
   },
-  {
-    id: "X016",
-    code: "DILUTED_VIAL_USED_AFTER_PERIOD",
-    severity: "error",
-    category: "clinical-contradiction",
-    description:
-      "Using a diluted BCG/MR/JE vial outside the prescribed 4-hour period is an unsafe vaccination practice.",
-    appliesTo: (r) => b(r, "H21") !== null,
-    violates: (r) => b(r, "H21") === false,
-    describe: () =>
-      "Diluted BCG/MR/JE vial is not being used within the prescribed 4-hour period (unsafe practice).",
-  },
 
   /* ----- tele-consultation coherence ----- */
   {

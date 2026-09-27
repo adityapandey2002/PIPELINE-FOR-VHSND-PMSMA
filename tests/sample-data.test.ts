@@ -58,7 +58,7 @@ describe("sample data end-to-end", () => {
     expect(codes).toContain("END_BEFORE_START");
     expect(codes).toContain("SESSION_NOT_HELD_REASON_REQUIRED");
     expect(codes).toContain("SYRINGE_NOT_CUT_REASON_REQUIRED");
-    expect(codes).toContain("DILUTED_VIAL_USED_AFTER_PERIOD");
+    expect(codes).not.toContain("DILUTED_VIAL_USED_AFTER_PERIOD"); // counted, not an error
     expect(codes).toContain("VISIT_DATE_AFTER_SUBMISSION");
     expect(codes).not.toContain("MISSING_REQUIRED"); // rule disabled temporarily
     expect(codes).toContain("NONE_SELECTED_WITH_OPTIONS");
