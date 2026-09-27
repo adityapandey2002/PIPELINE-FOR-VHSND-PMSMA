@@ -10,6 +10,8 @@ import { useDatasetStore } from "@/stores/datasetStore";
 import { useWorkflowStore } from "@/stores/workflowStore";
 import { VHSND_COLUMNS } from "@/schema/columns-vhsnd";
 import { computeDatasetInsights, type DatasetInsights } from "@/lib/insights";
+import { listDatasets } from "@/lib/storage/idb";
+import type { DatasetSummary } from "@/contracts/dataset";
 
 type Phase = "idle" | "reading" | "parsing" | "validating" | "done" | "error";
 
@@ -22,6 +24,7 @@ export default function IngestPage() {
   const [progress, setProgress] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [insights, setInsights] = useState<DatasetInsights | null>(null);
+  const [previous, setPrevious] = useState<DatasetSummary | null>(null);
   const [summary, setSummary] = useState<{
     rows: number;
     errors: number;
@@ -47,6 +50,7 @@ export default function IngestPage() {
       setError(null);
       setSummary(null);
       setInsights(null);
+      setPrevious(null);
 
       file
         .arrayBuffer()
@@ -92,8 +96,18 @@ export default function IngestPage() {
             headerRows: parsed.meta.headerRow,
           });
           setInsights(computeDatasetInsights(dataset));
-          setPhase("done");
           setActive(dataset.id);
+          const stored = await listDatasets();
+          setPrevious(
+            stored.find(
+              (d) =>
+                d.id !== dataset.id &&
+                d.fileName === parsed.meta.fileName &&
+                d.totalRows === dataset.totalRows &&
+                d.schemaVersion === dataset.schemaVersion,
+            ) ?? null,
+          );
+          setPhase("done");
         })
         .catch((err: unknown) => {
           setPhase("error");
@@ -165,6 +179,32 @@ export default function IngestPage() {
             >
               Continue to Review
             </button>
+          </div>
+        )}
+
+        {summary && previous && (
+          <div className="card" style={{ borderColor: "var(--warn)", background: "var(--warn-soft)" }}>
+            <h4 style={{ color: "var(--warn)", margin: 0 }}>{previous.fileName} was imported before</h4>
+            <p className="small" style={{ marginBottom: 0 }}>
+              {previous.totalRows.toLocaleString("en-IN")} rows, imported{" "}
+              {new Date(previous.importedAt).toLocaleString("en-IN")}. Decisions are saved per
+              import, so anything you decided on that copy does not follow this new one. Open the
+              earlier import to keep that work, or stay here and decide again.
+            </p>
+            <div className="row" style={{ gap: 8, marginTop: 10 }}>
+              <button
+                className="btn btn-accent btn-sm"
+                onClick={() => {
+                  setActive(previous.id);
+                  router.push("/review");
+                }}
+              >
+                Open the previous import
+              </button>
+              <button className="btn btn-sm" onClick={() => setPrevious(null)}>
+                Keep this new one
+              </button>
+            </div>
           </div>
         )}
 

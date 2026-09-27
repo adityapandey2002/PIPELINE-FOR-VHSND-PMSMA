@@ -103,7 +103,7 @@ export default function ReviewPage() {
     );
   }
 
-  if (loading) {
+  if (loading || (dataset && dataset.id !== activeDatasetId)) {
     return (
       <AppShell>
         <div className="empty">
