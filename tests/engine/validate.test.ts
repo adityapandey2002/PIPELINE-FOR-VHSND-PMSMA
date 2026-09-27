@@ -169,6 +169,42 @@ describe("Hepatitis_B (G1 option D)", () => {
   });
 });
 
+describe("select-multiple parents written as answers", () => {
+  const unmapped = (r: ReturnType<typeof validateRows>) =>
+    r.violations.filter((v) => v.code === "UNMAPPED_GROUP_OPTION");
+
+  it("reads codes followed by their labels, label variants included", () => {
+    const r = validateRows([row({ H32: "A. RCH REGISTER B RUPH REGISTER 88 OTHER (SPECIFY)" })], schema);
+    expect(unmapped(r)).toHaveLength(0);
+  });
+  it("reads bare choice codes", () => {
+    const r = validateRows([row({ H32: "A B 88" })], schema);
+    expect(unmapped(r)).toHaveLength(0);
+  });
+  it("reads labels with no code at all", () => {
+    const r = validateRows([row({ H32: "RCH Register Rough Register" })], schema);
+    expect(unmapped(r)).toHaveLength(0);
+  });
+  it("still reports every word that matches no option", () => {
+    const r = validateRows([row({ H32: "H32. So in which" })], schema);
+    expect(unmapped(r).map((v) => v.rawValue)).toEqual(["H32.", "So", "in", "which"]);
+  });
+  it("still reports an unmapped token sitting beside a valid code", () => {
+    const r = validateRows([row({ H32: "A Z" })], schema);
+    expect(unmapped(r).map((v) => v.rawValue)).toEqual(["Z"]);
+  });
+  it("cross-checks the parsed codes against the ticked columns", () => {
+    const ticked = validateRows([row({ H32: "A. RCH REGISTER", H32_A: 1 })], schema, {
+      presentColumns: ["H32", "H32_A"],
+    });
+    expect(codes(ticked)).not.toContain("GROUP_OPTION_MISMATCH");
+    const blank = validateRows([row({ H32: "A. RCH REGISTER" })], schema, {
+      presentColumns: ["H32", "H32_A"],
+    });
+    expect(codes(blank)).toContain("GROUP_OPTION_MISMATCH");
+  });
+});
+
 describe("tele-consultation reason field is not contradictory data", () => {
   it("accepts H26 reasons recorded alongside H24 = no", () => {
     const r = validateRows([row({ H24: "no", H26: "Internet issue" })], schema);

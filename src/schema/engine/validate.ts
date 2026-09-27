@@ -1,6 +1,6 @@
 import type { NormalizedRow, CellValue } from "@/contracts/dataset";
 import type { Severity, Violation, ViolationCategory } from "@/contracts/violation";
-import type { DatasetSchemaDef, RuleContext, SentinelMeaning } from "@/schema/dsl";
+import type { DatasetSchemaDef, GroupOption, RuleContext, SentinelMeaning } from "@/schema/dsl";
 import {
   coerceBoolean,
   coerceDate,
@@ -294,6 +294,81 @@ function collectFieldViolations(
   }
 }
 
+/** One token of a parent cell, reduced to letters and digits for matching. */
+function tokenKey(word: string): string {
+  return word.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+interface ParsedGroupSelection {
+  /** Option codes the parent cell actually names. */
+  codes: Set<string>;
+  /** Original tokens that matched no declared option. */
+  leftovers: string[];
+}
+
+/**
+ * Read a select-multiple parent cell written either as bare choice tokens
+ * ("A B 88") or as the answers spelled out ("A. RCH Register B Rough Register").
+ *
+ * A declared label is claimed first, since it is the most specific reading.
+ * A code token then anchors its own answer: the words that follow it are
+ * claimed when they echo any declared label of that group, which is how a
+ * label variant ("B RUPH Register" against a declared "Rough Register") is
+ * recognised without swallowing unrelated words. Whatever survives is
+ * unmapped, so junk in the cell is still reported token by token.
+ */
+function parseGroupSelection(
+  raw: string,
+  options: readonly GroupOption[],
+): ParsedGroupSelection {
+  const tokens = raw.trim().split(/\s+/).filter(Boolean);
+  const keys = tokens.map(tokenKey);
+  const consumed = new Array<boolean>(tokens.length).fill(false);
+  const codes = new Set<string>();
+
+  const declared = options.map((opt) => ({
+    code: opt.code,
+    key: tokenKey(opt.code),
+    label: opt.label.split(/\s+/).map(tokenKey).filter(Boolean),
+  }));
+  const byKey = new Map<string, (typeof declared)[number]>();
+  for (const opt of declared) if (opt.key && !byKey.has(opt.key)) byKey.set(opt.key, opt);
+  const labelWords = new Set<string>();
+  for (const opt of declared) for (const word of opt.label) labelWords.add(word);
+
+  for (const opt of declared) {
+    if (opt.label.length === 0) continue;
+    for (let at = 0; at + opt.label.length <= tokens.length; at++) {
+      let hit = true;
+      for (let j = 0; j < opt.label.length && hit; j++) {
+        if (consumed[at + j] || keys[at + j] !== opt.label[j]) hit = false;
+      }
+      if (!hit) continue;
+      for (let j = 0; j < opt.label.length; j++) consumed[at + j] = true;
+      codes.add(opt.code);
+      break;
+    }
+  }
+
+  const anchors: number[] = [];
+  keys.forEach((key, at) => {
+    if (byKey.has(key)) anchors.push(at);
+  });
+  for (let a = 0; a < anchors.length; a++) {
+    const at = anchors[a];
+    const opt = byKey.get(keys[at])!;
+    codes.add(opt.code);
+    consumed[at] = true;
+    const end = a + 1 < anchors.length ? anchors[a + 1] : tokens.length;
+    const chunk = keys.slice(at + 1, end).filter(Boolean);
+    if (!chunk.some((word) => labelWords.has(word))) continue;
+    for (let i = at + 1; i < end; i++) consumed[i] = true;
+  }
+
+  const leftovers = tokens.filter((_, at) => !consumed[at]);
+  return { codes, leftovers };
+}
+
 /**
  * Cross-check a select-multiple's parent cell against its one-hot children.
  *
@@ -314,40 +389,39 @@ function checkGroupSelections(
     const parentRaw = row.values[field.id];
     if (typeof parentRaw !== "string" || parentRaw.trim() === "") continue;
 
-    const tokens = parentRaw.trim().split(/\s+/).filter(Boolean);
-    const suffixes = new Set((field.group?.options ?? []).map((o) => o.code));
+    const options = field.group?.options ?? [];
+    const { codes, leftovers } = parseGroupSelection(parentRaw, options);
     const selected = new Set<string>();
-    for (const opt of field.group?.options ?? []) {
+    for (const opt of options) {
       if (coerceBoolean(row.values[`${field.id}_${opt.code}`]) === true) selected.add(opt.code);
     }
 
-    for (const token of tokens) {
-      if (!suffixes.has(token)) {
-        out.push({
-          rowId: row.id,
-          ruleId: `F-${field.id}`,
-          code: "UNMAPPED_GROUP_OPTION",
-          severity: "warning",
-          category: "value-set",
-          fieldId: field.id,
-          rawValue: token,
-          message: `${field.label} recorded option "${token}", which has no matching column in this form version. It cannot be analysed.`,
-        });
-        continue;
-      }
-      if (!selected.has(token)) {
-        if (presentColumns && !presentColumns.has(`${field.id}_${token}`)) continue;
-        out.push({
-          rowId: row.id,
-          ruleId: `F-${field.id}`,
-          code: "GROUP_OPTION_MISMATCH",
-          severity: "info",
-          category: "coherence",
-          fieldId: field.id,
-          rawValue: token,
-          message: `${field.label} lists "${token}" but its ${field.id}_${token} column is not ticked. The ticked columns were used.`,
-        });
-      }
+    for (const token of leftovers) {
+      out.push({
+        rowId: row.id,
+        ruleId: `F-${field.id}`,
+        code: "UNMAPPED_GROUP_OPTION",
+        severity: "warning",
+        category: "value-set",
+        fieldId: field.id,
+        rawValue: token,
+        message: `${field.label} recorded option "${token}", which has no matching column in this form version. It cannot be analysed.`,
+      });
+    }
+
+    for (const token of codes) {
+      if (selected.has(token)) continue;
+      if (presentColumns && !presentColumns.has(`${field.id}_${token}`)) continue;
+      out.push({
+        rowId: row.id,
+        ruleId: `F-${field.id}`,
+        code: "GROUP_OPTION_MISMATCH",
+        severity: "info",
+        category: "coherence",
+        fieldId: field.id,
+        rawValue: token,
+        message: `${field.label} lists "${token}" but its ${field.id}_${token} column is not ticked. The ticked columns were used.`,
+      });
     }
   }
 }
