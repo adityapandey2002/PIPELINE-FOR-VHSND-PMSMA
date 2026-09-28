@@ -38,6 +38,7 @@ export default function VizPage() {
   const [selectedId, setSelectedId] = useState<string>(VHSND_INDICATORS[0]?.id ?? "");
   const [mode, setMode] = useState<"indicator" | "comparison">("indicator");
   const [comparisonId, setComparisonId] = useState<string>(COMPARISONS[0]?.id ?? "");
+  const [partialFor, setPartialFor] = useState<string | null>(null);
   const [kind, setKind] = useState<ChartKind>("bar-vertical");
   const [capturing, setCapturing] = useState(false);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
@@ -78,6 +79,10 @@ export default function VizPage() {
     () => (mode === "comparison" && selectedComparison ? selectedComparison.compute(cleanRows) : null),
     [mode, selectedComparison, cleanRows],
   );
+
+  const partialKey = `${activeDatasetId ?? ""}|${comparisonId}|${mode}`;
+  const missingColumns = mode === "comparison" && compResult ? compResult.columnsMissing : [];
+  const awaitingPartial = missingColumns.length > 0 && partialFor !== partialKey;
 
   const activeKind: ChartKind = mode === "comparison" ? compResult?.kind ?? "bar-vertical" : kind;
   const activeSeries = compResult ? compResult.series : series;
@@ -261,9 +266,9 @@ export default function VizPage() {
               <button
                 className={`btn btn-sm${mode === "comparison" ? " btn-primary" : ""}`}
                 onClick={() => setMode("comparison")}
-                title="20 comparison charts (funnel, radar, box, gauge, cross-tab…)"
+                title={`${COMPARISONS.length} comparison charts (funnel, radar, box, gauge, cross-tab…)`}
               >
-                Comparison charts (20)
+                Comparison charts ({COMPARISONS.length})
               </button>
             </div>
             {mode === "indicator" ? (
@@ -312,7 +317,7 @@ export default function VizPage() {
               <div className="row-wrap" style={{ gap: 8 }}>
                 <span className="muted small">Chart type:</span>
                 <span className="btn btn-sm" style={{ cursor: "default" }}>{activeKind}</span>
-                {compResult.columnsMissing.length > 0 && (
+                {compResult && compResult.columnsMissing.length > 0 && !awaitingPartial && (
                   <span className="small" style={{ color: "var(--warning)", fontWeight: 700 }}>
                     Not in this file: {compResult.columnsMissing.join(", ")}
                   </span>
@@ -327,14 +332,53 @@ export default function VizPage() {
 
           <div ref={chartRef} style={{ padding: 16, background: "#fff" }}>
             <h4 style={{ margin: "0 0 8px", color: "var(--text)" }}>{activeTitle}</h4>
-            <ChartCanvas
-              kind={activeKind}
-              title={activeTitle}
-              series={activeSeries}
-              palette={palette}
-              extra={compResult?.extra}
-            />
-            {compResult && (
+            {awaitingPartial ? (
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: 10,
+                  border: "1px solid #fed7aa",
+                  background: "#fff7ed",
+                }}
+              >
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: 10,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    color: "#9a3412",
+                    marginBottom: 6,
+                  }}
+                >
+                  Cannot show this in full
+                </span>
+                <p className="small" style={{ margin: "0 0 10px", color: "#7c2d12", lineHeight: 1.5 }}>
+                  {selectedComparison.label} reads columns that this file does not carry:{" "}
+                  <span className="mono">{missingColumns.join(", ")}</span>. Charting it now would
+                  leave those parts out and read as a smaller result than it really is, so nothing is
+                  drawn until you ask for the partial view.
+                </p>
+                <button className="btn btn-accent btn-sm" onClick={() => setPartialFor(partialKey)}>
+                  Show partial anyway
+                </button>
+              </div>
+            ) : (
+              <>
+                {missingColumns.length > 0 && (
+                  <p className="small" style={{ margin: "0 0 8px", color: "var(--warning)", fontWeight: 700 }}>
+                    Partial view — not in this file: {missingColumns.join(", ")}
+                  </p>
+                )}
+                <ChartCanvas
+                  kind={activeKind}
+                  title={activeTitle}
+                  series={activeSeries}
+                  palette={palette}
+                  extra={compResult?.extra}
+                />
+                {compResult && (
               <div
                 style={{
                   marginTop: 10,
@@ -362,10 +406,16 @@ export default function VizPage() {
                 </p>
               </div>
             )}
+              </>
+            )}
           </div>
 
           <div className="row" style={{ padding: "0 16px 16px", justifyContent: "flex-end" }}>
-            <button className="btn btn-primary btn-sm" onClick={handleAddToReport} disabled={capturing}>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={handleAddToReport}
+              disabled={capturing || awaitingPartial}
+            >
               {capturing ? "Capturing…" : "Add to report"}
             </button>
           </div>

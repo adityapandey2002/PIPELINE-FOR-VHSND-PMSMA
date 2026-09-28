@@ -51,7 +51,11 @@ export function deriveCleanRows(
   for (const row of dataset.rows) {
     const res = resolutions[row.id];
     const outcome = applyResolution(row, res, coercer?.coerce);
-    const clean: CleanRow = { rowId: row.id, values: outcome.values };
+    const clean: CleanRow = {
+      rowId: row.id,
+      values: outcome.values,
+      presentColumns: dataset.presentColumns,
+    };
     if (!outcome.keep) {
       dropped.push(clean);
       continue;

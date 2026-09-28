@@ -19,6 +19,12 @@ import type { CellValue } from "./dataset";
 export interface CleanRow {
   rowId: string;
   values: Record<string, CellValue>;
+  /**
+   * Schema codes the source file physically carried, shared by every row of
+   * one dataset. Values alone cannot tell "column absent from the file" from
+   * "column present but blank in every row", which readers must not conflate.
+   */
+  presentColumns?: readonly string[];
 }
 
 export function applyResolution(

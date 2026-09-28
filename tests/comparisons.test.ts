@@ -101,6 +101,30 @@ describe("funnel cascades", () => {
   });
 });
 
+describe("missing means absent from the file, not merely blank", () => {
+  const withFile = (values: Record<string, string | number | boolean | null>, file: string[]) =>
+    [{ ...row(values), presentColumns: file }];
+
+  it("does not call a listed column missing just because every cell is empty", () => {
+    const rows = withFile({ G3_E: "Yes" }, ["G3_E", "H1HB", "H1HB1", "H1HB_4"]);
+    const res = COMPARISONS.find((c) => c.id === "anemia-cascade")!.compute(rows);
+    expect(res.columnsMissing).toEqual([]);
+  });
+
+  it("still reports a column the file never carried", () => {
+    const rows = withFile({ G3_E: "Yes" }, ["G3_E"]);
+    const res = COMPARISONS.find((c) => c.id === "anemia-cascade")!.compute(rows);
+    expect(res.columnsMissing).toEqual(["H1HB", "H1HB1", "H1HB_4"]);
+  });
+
+  it("falls back to the values when rows do not know the file's columns", () => {
+    const res = COMPARISONS.find((c) => c.id === "anemia-cascade")!.compute([
+      row({ G3_E: "Yes" }),
+    ]);
+    expect(res.columnsMissing).toEqual(["H1HB", "H1HB1", "H1HB_4"]);
+  });
+});
+
 describe("group-by-block logics", () => {
   const rows = [
     row({ B2A: "BlockA", G3_F: "Yes", H1_F: "Yes", ASHA1: "Yes", H25: 4 }),

@@ -31,13 +31,27 @@ export function stdNum(v: CellValue | undefined | null): number | null {
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-function hasColumn(rows: CleanRow[], code: string): boolean {
+/** At least one row carries a value for this code. */
+function hasValues(rows: CleanRow[], code: string): boolean {
   return rows.some((r) => r.values[code] !== undefined);
 }
 
+/**
+ * Whether the source file physically carried this code. Rows built from a
+ * parse know the file's real column list, which separates "absent from the
+ * file" from "present but blank in every row" — values alone cannot.
+ */
+function inFile(rows: CleanRow[], code: string): boolean {
+  const declared = rows[0]?.presentColumns;
+  if (declared) return declared.includes(code);
+  return hasValues(rows, code);
+}
+
 function presentCodes(rows: CleanRow[], codes: string[]): { present: string[]; missing: string[] } {
-  const present = codes.filter((c) => hasColumn(rows, c));
-  return { present, missing: codes.filter((c) => !present.includes(c)) };
+  return {
+    present: codes.filter((c) => hasValues(rows, c)),
+    missing: codes.filter((c) => !inFile(rows, c)),
+  };
 }
 
 /** Count rows where the (standardised) column is True. */
