@@ -12,6 +12,8 @@ export interface ParseTask {
   importedAt: string;
   /** Field orientation; `auto` flips an export whose fields run down the side. */
   orientation?: "auto" | "upright" | "flipped";
+  /** Columns the user matched by hand, keyed by the header text in the sheet. */
+  headerOverrides?: Record<string, string>;
 }
 
 export interface ValidateTask {
@@ -82,6 +84,7 @@ export function runParse(task: ParseTask, onProgress?: (phase: string) => void):
         sizeBytes: task.sizeBytes,
         importedAt: task.importedAt,
         orientation: task.orientation,
+        headerOverrides: task.headerOverrides,
       };
       worker.postMessage({ type: "parse", payload }, [task.buffer]);
     } else {
@@ -102,6 +105,7 @@ export function runParse(task: ParseTask, onProgress?: (phase: string) => void):
             sizeBytes: task.sizeBytes,
             importedAt: task.importedAt,
             orientation: task.orientation,
+            headerOverrides: task.headerOverrides,
           });
         })
         .then((data) => {

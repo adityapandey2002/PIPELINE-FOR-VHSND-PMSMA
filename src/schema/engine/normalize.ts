@@ -47,6 +47,13 @@ export interface ParsedSheet {
    * say why columns suddenly became available.
    */
   transposed?: boolean;
+  /**
+   * Header texts the schema could not place, in sheet order and without
+   * repeats. They stay in the sheet as their own columns; the ingest screen
+   * offers them so the user can point each at the field it belongs to. Absent
+   * when every header matched.
+   */
+  unmappedHeaders?: string[];
 }
 
 export interface ParseSource {
@@ -373,6 +380,24 @@ function isDuplicateLabelRow(
 }
 
 /**
+ * Point headers at the fields the user chose. Keyed by the text the sheet
+ * shows -- the label when there is one, otherwise the code of its own row --
+ * so a mapping survives either header shape.
+ */
+function applyHeaderOverrides(
+  layout: HeaderLayout,
+  overrides?: Record<string, string>,
+): void {
+  if (!overrides) return;
+  for (let i = 0; i < layout.codes.length; i++) {
+    const code = (layout.codes[i] ?? "").trim();
+    const label = (layout.labels[i] ?? "").trim();
+    const target = overrides[code] ?? (label === "" ? undefined : overrides[label]);
+    if (target) layout.codes[i] = target;
+  }
+}
+
+/**
  * Parse a raw sheet given as an array-of-arrays.
  *
  * Columns are keyed by the code row, so duplicate human labels (the form has
@@ -386,8 +411,10 @@ export function normalizeAoa(
   knownColumns: Set<string>,
   resolveLabel: (label: string) => string,
   transposed = false,
+  headerOverrides?: Record<string, string>,
 ): ParsedSheet {
   const layout = detectHeaderLayout(aoa, knownColumns, resolveLabel);
+  applyHeaderOverrides(layout, headerOverrides);
   const typeMap = buildTypeMap(fields);
   const defById = new Map(fields.map((f) => [f.id, f]));
 
@@ -428,6 +455,19 @@ export function normalizeAoa(
     presentColumns.push(code);
   }
 
+  // Headers the schema could not place: their values are kept under the text
+  // itself, so the import screen can ask which field each one belongs to.
+  const unmapped: string[] = [];
+  const unmappedSeen = new Set<string>();
+  layout.codes.forEach((code, i) => {
+    const c = code.trim();
+    if (c === "" || knownColumns.has(c)) return;
+    const text = layout.labels[i]?.trim() || c;
+    if (unmappedSeen.has(text)) return;
+    unmappedSeen.add(text);
+    unmapped.push(text);
+  });
+
   const rows: NormalizedRow[] = [];
   let skipped = 0;
 
@@ -461,6 +501,7 @@ export function normalizeAoa(
     presentColumns,
     collapsedColumns: [...collapsed.values()],
     ...(transposed ? { transposed: true } : {}),
+    ...(unmapped.length > 0 ? { unmappedHeaders: unmapped } : {}),
     meta: {
       fileName: source.fileName,
       sheetName: source.sheetName,

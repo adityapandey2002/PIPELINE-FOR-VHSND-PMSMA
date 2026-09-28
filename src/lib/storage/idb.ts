@@ -207,6 +207,26 @@ export async function deleteValidation(datasetId: string): Promise<void> {
   await storeDelete("validation", datasetId);
 }
 
+/* --------------------------- header mappings --------------------------- */
+
+/**
+ * Columns the user matched by hand, kept per export rather than per import so
+ * the next read of the same file is already mapped. Stored like the rest of
+ * this app's local state: encrypted, and removed by the privacy wipe.
+ */
+export async function saveHeaderOverrides(
+  fileName: string,
+  map: Record<string, string>,
+): Promise<void> {
+  await storeSet(P.ui, `hdr:${fileName}`, await encryptString(JSON.stringify(map)));
+}
+
+export async function loadHeaderOverrides(fileName: string): Promise<Record<string, string>> {
+  const raw = await storeGet<string>(P.ui, `hdr:${fileName}`);
+  if (!raw) return {};
+  return JSON.parse(await decryptString(raw)) as Record<string, string>;
+}
+
 /* ------------------------------- ui (zustand) ------------------------------- */
 
 export interface EncryptedKeyValStorage {

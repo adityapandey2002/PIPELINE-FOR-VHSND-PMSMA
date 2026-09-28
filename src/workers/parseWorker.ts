@@ -14,6 +14,12 @@ export type ParseRequest = {
      * first column; the other two are the user's manual override on ingest.
      */
     orientation?: "auto" | "upright" | "flipped";
+    /**
+     * Columns the user matched by hand on ingest, keyed by the header text in
+     * the sheet. Applied wherever a header is resolved to a field, so a title
+     * the schema does not know becomes the column it was pointed at.
+     */
+    headerOverrides?: Record<string, string>;
   };
 };
 
@@ -49,7 +55,9 @@ export async function parsePayload(payload: ParseRequest["payload"]): Promise<Pa
   const header = buildHeaderMap();
 
   const orientation = payload.orientation ?? "auto";
-  const sideways = detectTransposed(aoa, header.knownColumns, header.normalize);
+  const overrides = payload.headerOverrides;
+  const resolveLabel = (text: string) => overrides?.[text] ?? header.normalize(text);
+  const sideways = detectTransposed(aoa, header.knownColumns, resolveLabel);
   const flip = orientation === "flipped" ? true : orientation === "upright" ? false : sideways;
 
   const source: ParseSource = {
@@ -64,8 +72,9 @@ export async function parsePayload(payload: ParseRequest["payload"]): Promise<Pa
     schema.fields,
     source,
     header.knownColumns,
-    header.normalize,
+    resolveLabel,
     flip,
+    overrides,
   );
 }
 

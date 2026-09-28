@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { AppShell } from "@/components/AppShell";
@@ -10,14 +10,14 @@ import { useDatasetStore } from "@/stores/datasetStore";
 import { useWorkflowStore } from "@/stores/workflowStore";
 import { VHSND_COLUMNS } from "@/schema/columns-vhsnd";
 import { computeDatasetInsights, type DatasetInsights } from "@/lib/insights";
-import { listDatasets } from "@/lib/storage/idb";
+import { listDatasets, loadHeaderOverrides, saveHeaderOverrides } from "@/lib/storage/idb";
 import type { DatasetSummary } from "@/contracts/dataset";
 
 type Phase = "idle" | "reading" | "parsing" | "validating" | "done" | "error";
 
 export default function IngestPage() {
   const router = useRouter();
-  const { createDataset, setValidation } = useDatasetStore();
+  const { createDataset, setValidation, removeDataset } = useDatasetStore();
   const setActive = useWorkflowStore((s) => s.setActiveDatasetId);
   const [phase, setPhase] = useState<Phase>("idle");
   const [fileName, setFileName] = useState<string | null>(null);
@@ -31,6 +31,11 @@ export default function IngestPage() {
   );
   const [orientation, setOrientation] = useState<"auto" | "upright" | "flipped">("auto");
   const [transposed, setTransposed] = useState(false);
+  const [headerOverrides, setHeaderOverrides] = useState<Record<string, string>>({});
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [unmapped, setUnmapped] = useState<string[]>([]);
+  /** The import this screen made last, replaced when the file is read again. */
+  const sessionDatasetId = useRef<string | null>(null);
   const [summary, setSummary] = useState<{
     rows: number;
     errors: number;
@@ -40,6 +45,7 @@ export default function IngestPage() {
     collapsedColumns: { label: string; keptCode: string; count: number }[];
     headerRows: number;
     transposed: boolean;
+    presentColumns: string[];
   } | null>(null);
 
   const ingestBuffer = useCallback(
@@ -48,6 +54,7 @@ export default function IngestPage() {
       name: string,
       sizeBytes: number,
       next: "auto" | "upright" | "flipped",
+      overrides: Record<string, string> = {},
     ) => {
       setPhase("reading");
       setError(null);
@@ -57,6 +64,9 @@ export default function IngestPage() {
       setShowAllSparse(false);
       setTransposed(false);
       setOrientation(next);
+      setHeaderOverrides(overrides);
+      setUnmapped([]);
+      setDrafts({});
       try {
         const parsed = await runParse(
           {
@@ -65,12 +75,15 @@ export default function IngestPage() {
             sizeBytes,
             importedAt: new Date().toISOString(),
             orientation: next,
+            headerOverrides: overrides,
           },
           (p) => setProgress(p === "done" ? "done" : "Parsing workbook…"),
         );
         setPhase("validating");
         setProgress("Checking for contradictions…");
         const dataset = await createDataset(parsed, "vhsnd");
+        const superseded = sessionDatasetId.current;
+        sessionDatasetId.current = dataset.id;
         const result = await runValidate({
           rows: dataset.rows,
           schemaVersion: dataset.schemaVersion,
@@ -97,8 +110,10 @@ export default function IngestPage() {
           collapsedColumns: parsed.collapsedColumns,
           headerRows: parsed.meta.headerRow,
           transposed: parsed.transposed === true,
+          presentColumns: parsed.presentColumns,
         });
         setTransposed(parsed.transposed === true);
+        setUnmapped(parsed.unmappedHeaders ?? []);
         setInsights(computeDatasetInsights(dataset));
         setActive(dataset.id);
         const stored = await listDatasets();
@@ -106,18 +121,22 @@ export default function IngestPage() {
           stored.find(
             (d) =>
               d.id !== dataset.id &&
+              d.id !== superseded &&
               d.fileName === parsed.meta.fileName &&
               d.totalRows === dataset.totalRows &&
               d.schemaVersion === dataset.schemaVersion,
           ) ?? null,
         );
+        // A re-read replaces what this screen imported, so the same file does
+        // not pile up as several half-correct datasets.
+        if (superseded) await removeDataset(superseded);
         setPhase("done");
       } catch (err: unknown) {
         setPhase("error");
         setError(err instanceof Error ? err.message : String(err));
       }
     },
-    [createDataset, setValidation, setActive],
+    [createDataset, setValidation, setActive, removeDataset],
   );
 
   const onDrop = useCallback(
@@ -136,9 +155,10 @@ export default function IngestPage() {
 
       file
         .arrayBuffer()
-        .then((buffer) => {
+        .then(async (buffer) => {
           setRaw({ buffer, fileName: file.name, sizeBytes: file.size });
-          return ingestBuffer(buffer, file.name, file.size, "auto");
+          const saved = await loadHeaderOverrides(file.name);
+          return ingestBuffer(buffer, file.name, file.size, "auto", saved);
         })
         .catch((err: unknown) => {
           setPhase("error");
@@ -150,8 +170,24 @@ export default function IngestPage() {
 
   const rereadOtherWay = useCallback(() => {
     if (!raw) return;
-    void ingestBuffer(raw.buffer, raw.fileName, raw.sizeBytes, transposed ? "upright" : "flipped");
-  }, [raw, transposed, ingestBuffer]);
+    void ingestBuffer(
+      raw.buffer,
+      raw.fileName,
+      raw.sizeBytes,
+      transposed ? "upright" : "flipped",
+      headerOverrides,
+    );
+  }, [raw, transposed, headerOverrides, ingestBuffer]);
+
+  const applyHeaderMapping = useCallback(async () => {
+    if (!raw) return;
+    const chosen = unmapped.filter((title) => drafts[title]);
+    if (chosen.length === 0) return;
+    const next = { ...headerOverrides };
+    for (const title of chosen) next[title] = drafts[title];
+    await saveHeaderOverrides(raw.fileName, next);
+    await ingestBuffer(raw.buffer, raw.fileName, raw.sizeBytes, orientation, next);
+  }, [raw, unmapped, drafts, headerOverrides, orientation, ingestBuffer]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -202,6 +238,9 @@ export default function IngestPage() {
               {summary.rows.toLocaleString("en-IN")} rows · {summary.errors.toLocaleString("en-IN")} errors ·{" "}
               {summary.warnings.toLocaleString("en-IN")} warnings ·{" "}
               {summary.columnsRecognized} of {VHSND_COLUMNS.length} columns recognized.
+              {Object.keys(headerOverrides).length > 0 && (
+                <span> {Object.keys(headerOverrides).length} matched by hand.</span>
+              )}
               {summary.missingCritical.length > 0 && (
                 <span style={{ color: "var(--warning)" }}>
                   {" "}Missing critical column(s): {summary.missingCritical.join(", ")}.
@@ -281,6 +320,63 @@ export default function IngestPage() {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {phase === "done" && unmapped.length > 0 && summary && (
+          <div className="card" style={{ borderColor: "var(--info)", background: "var(--info-soft)" }}>
+            <h4 style={{ color: "var(--info)", margin: 0 }}>
+              {unmapped.length} column title{unmapped.length === 1 ? "" : "s"} could not be matched
+            </h4>
+            <p className="small" style={{ marginBottom: 10 }}>
+              These titles are not part of the VHSND form, so their values are held under the title
+              itself and no field, chart or comparison can read them. Point each one at the field it
+              stands for, then read the file again. The match is saved with this export, so the next
+              import of the same file comes in already mapped.
+            </p>
+            <div style={{ display: "grid", gap: 8 }}>
+              {unmapped.map((title) => (
+                <div key={title} className="row" style={{ gap: 10, alignItems: "center" }}>
+                  <span
+                    className="small"
+                    title={title}
+                    style={{
+                      flex: "1 1 240px",
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {title}
+                  </span>
+                  <select
+                    value={drafts[title] ?? ""}
+                    onChange={(e) => setDrafts((d) => ({ ...d, [title]: e.target.value }))}
+                    style={{ flex: "1 1 320px", maxWidth: 420 }}
+                  >
+                    <option value="">Leave it out</option>
+                    {VHSND_COLUMNS.map((c) => {
+                      const used = summary.presentColumns.includes(c.code);
+                      return (
+                        <option key={c.code} value={c.code} disabled={used}>
+                          {c.code} — {c.label}
+                          {used ? " (already in this file)" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <button
+              className="btn btn-accent btn-sm"
+              style={{ marginTop: 12 }}
+              disabled={busy || !unmapped.some((t) => drafts[t])}
+              onClick={() => void applyHeaderMapping()}
+            >
+              Match these and read again
+            </button>
           </div>
         )}
       </section>
