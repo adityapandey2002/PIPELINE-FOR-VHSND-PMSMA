@@ -254,7 +254,7 @@ function funnelInsight(steps: { name: string; value: number }[]): string {
   return `Pinpoints drop-off: ${pctLost}% lost between "${prev.name}" (${prev.value}) and "${cur.name}" (${cur.value}) — ${cur.name.toLowerCase()} is the broken link.`;
 }
 
-/* ---------------------------- the 20 comparisons ---------------------------- */
+/* ---------------------------- the comparison registry ---------------------------- */
 
 export const COMPARISON_CATEGORIES = [
   "1 · Diagnostic Care Cascades",
