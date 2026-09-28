@@ -26,6 +26,11 @@ export default function IngestPage() {
   const [insights, setInsights] = useState<DatasetInsights | null>(null);
   const [previous, setPrevious] = useState<DatasetSummary | null>(null);
   const [showAllSparse, setShowAllSparse] = useState(false);
+  const [raw, setRaw] = useState<{ buffer: ArrayBuffer; fileName: string; sizeBytes: number } | null>(
+    null,
+  );
+  const [orientation, setOrientation] = useState<"auto" | "upright" | "flipped">("auto");
+  const [transposed, setTransposed] = useState(false);
   const [summary, setSummary] = useState<{
     rows: number;
     errors: number;
@@ -34,7 +39,86 @@ export default function IngestPage() {
     missingCritical: string[];
     collapsedColumns: { label: string; keptCode: string; count: number }[];
     headerRows: number;
+    transposed: boolean;
   } | null>(null);
+
+  const ingestBuffer = useCallback(
+    async (
+      buffer: ArrayBuffer,
+      name: string,
+      sizeBytes: number,
+      next: "auto" | "upright" | "flipped",
+    ) => {
+      setPhase("reading");
+      setError(null);
+      setSummary(null);
+      setInsights(null);
+      setPrevious(null);
+      setShowAllSparse(false);
+      setTransposed(false);
+      setOrientation(next);
+      try {
+        const parsed = await runParse(
+          {
+            buffer: buffer.slice(0),
+            fileName: name,
+            sizeBytes,
+            importedAt: new Date().toISOString(),
+            orientation: next,
+          },
+          (p) => setProgress(p === "done" ? "done" : "Parsing workbook…"),
+        );
+        setPhase("validating");
+        setProgress("Checking for contradictions…");
+        const dataset = await createDataset(parsed, "vhsnd");
+        const result = await runValidate({
+          rows: dataset.rows,
+          schemaVersion: dataset.schemaVersion,
+          refDate: null,
+          presentColumns: parsed.presentColumns,
+        });
+        await setValidation({
+          violations: result.violations,
+          counts: result.counts,
+          byRow: result.byRow,
+          validatedAt: new Date().toISOString(),
+        });
+        const known = new Set(VHSND_COLUMNS.map((c) => c.code));
+        const columnsRecognized = parsed.presentColumns.filter((c) => known.has(c)).length;
+        const missingCritical = ["SubmissionDate", "B8"].filter(
+          (c) => !parsed.presentColumns.includes(c),
+        );
+        setSummary({
+          rows: dataset.totalRows,
+          errors: result.counts.error,
+          warnings: result.counts.warning,
+          columnsRecognized,
+          missingCritical,
+          collapsedColumns: parsed.collapsedColumns,
+          headerRows: parsed.meta.headerRow,
+          transposed: parsed.transposed === true,
+        });
+        setTransposed(parsed.transposed === true);
+        setInsights(computeDatasetInsights(dataset));
+        setActive(dataset.id);
+        const stored = await listDatasets();
+        setPrevious(
+          stored.find(
+            (d) =>
+              d.id !== dataset.id &&
+              d.fileName === parsed.meta.fileName &&
+              d.totalRows === dataset.totalRows &&
+              d.schemaVersion === dataset.schemaVersion,
+          ) ?? null,
+        );
+        setPhase("done");
+      } catch (err: unknown) {
+        setPhase("error");
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [createDataset, setValidation, setActive],
+  );
 
   const onDrop = useCallback(
     (files: File[]) => {
@@ -49,75 +133,25 @@ export default function IngestPage() {
       setFileName(file.name);
       setPhase("reading");
       setError(null);
-      setSummary(null);
-      setInsights(null);
-      setPrevious(null);
-      setShowAllSparse(false);
 
       file
         .arrayBuffer()
-        .then((buffer) =>
-          runParse(
-            {
-              buffer,
-              fileName: file.name,
-              sizeBytes: file.size,
-              importedAt: new Date().toISOString(),
-            },
-            (p) => setProgress(p === "done" ? "done" : "Parsing workbook…"),
-          ),
-        )
-        .then(async (parsed) => {
-          setPhase("validating");
-          setProgress("Checking for contradictions…");
-          const dataset = await createDataset(parsed, "vhsnd");
-          const result = await runValidate({
-            rows: dataset.rows,
-            schemaVersion: dataset.schemaVersion,
-            refDate: null,
-            presentColumns: parsed.presentColumns,
-          });
-          await setValidation({
-            violations: result.violations,
-            counts: result.counts,
-            byRow: result.byRow,
-            validatedAt: new Date().toISOString(),
-          });
-          const known = new Set(VHSND_COLUMNS.map((c) => c.code));
-          const columnsRecognized = parsed.presentColumns.filter((c) => known.has(c)).length;
-          const missingCritical = ["SubmissionDate", "B8"].filter(
-            (c) => !parsed.presentColumns.includes(c),
-          );
-          setSummary({
-            rows: dataset.totalRows,
-            errors: result.counts.error,
-            warnings: result.counts.warning,
-            columnsRecognized,
-            missingCritical,
-            collapsedColumns: parsed.collapsedColumns,
-            headerRows: parsed.meta.headerRow,
-          });
-          setInsights(computeDatasetInsights(dataset));
-          setActive(dataset.id);
-          const stored = await listDatasets();
-          setPrevious(
-            stored.find(
-              (d) =>
-                d.id !== dataset.id &&
-                d.fileName === parsed.meta.fileName &&
-                d.totalRows === dataset.totalRows &&
-                d.schemaVersion === dataset.schemaVersion,
-            ) ?? null,
-          );
-          setPhase("done");
+        .then((buffer) => {
+          setRaw({ buffer, fileName: file.name, sizeBytes: file.size });
+          return ingestBuffer(buffer, file.name, file.size, "auto");
         })
         .catch((err: unknown) => {
           setPhase("error");
           setError(err instanceof Error ? err.message : String(err));
         });
     },
-    [createDataset, setValidation, setActive],
+    [ingestBuffer],
   );
+
+  const rereadOtherWay = useCallback(() => {
+    if (!raw) return;
+    void ingestBuffer(raw.buffer, raw.fileName, raw.sizeBytes, transposed ? "upright" : "flipped");
+  }, [raw, transposed, ingestBuffer]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -169,7 +203,7 @@ export default function IngestPage() {
               {summary.warnings.toLocaleString("en-IN")} warnings ·{" "}
               {summary.columnsRecognized} of {VHSND_COLUMNS.length} columns recognized.
               {summary.missingCritical.length > 0 && (
-                <span style={{ color: "var(--warn)" }}>
+                <span style={{ color: "var(--warning)" }}>
                   {" "}Missing critical column(s): {summary.missingCritical.join(", ")}.
                 </span>
               )}
@@ -184,9 +218,27 @@ export default function IngestPage() {
           </div>
         )}
 
+        {phase === "done" && summary && (summary.transposed || orientation !== "auto") && (
+          <div className="card" style={{ borderColor: "var(--info)", background: "var(--info-soft)" }}>
+            <h4 style={{ color: "var(--info)", margin: 0 }}>
+              {summary.transposed ? "This export was sideways" : "Read exactly as it is"}
+            </h4>
+            <p className="small" style={{ marginBottom: 0 }}>
+              {summary.transposed
+                ? "Its fields run down the first column and every submission is a column of its own, so rows and columns were swapped while reading. That is why the columns and comparisons appear now. Nothing was dropped."
+                : "Rows and columns were not swapped, as in the file. If most columns are reported missing, the export may be transposed — swapping them reads it the other way up."}
+            </p>
+            <button className="btn btn-sm" style={{ marginTop: 10 }} onClick={rereadOtherWay}>
+              {summary.transposed
+                ? "Read it as it is, without swapping"
+                : "Swap rows and columns, then read again"}
+            </button>
+          </div>
+        )}
+
         {summary && previous && (
-          <div className="card" style={{ borderColor: "var(--warn)", background: "var(--warn-soft)" }}>
-            <h4 style={{ color: "var(--warn)", margin: 0 }}>{previous.fileName} was imported before</h4>
+          <div className="card" style={{ borderColor: "var(--warning)", background: "var(--warning-soft)" }}>
+            <h4 style={{ color: "var(--warning)", margin: 0 }}>{previous.fileName} was imported before</h4>
             <p className="small" style={{ marginBottom: 0 }}>
               {previous.totalRows.toLocaleString("en-IN")} rows, imported{" "}
               {new Date(previous.importedAt).toLocaleString("en-IN")}. Decisions are saved per
@@ -211,8 +263,8 @@ export default function IngestPage() {
         )}
 
         {summary && summary.collapsedColumns.length > 0 && (
-          <div className="card" style={{ borderColor: "var(--warn)", background: "var(--warn-soft)" }}>
-            <h4 style={{ color: "var(--warn)", margin: 0 }}>
+          <div className="card" style={{ borderColor: "var(--warning)", background: "var(--warning-soft)" }}>
+            <h4 style={{ color: "var(--warning)", margin: 0 }}>
               {summary.collapsedColumns.reduce((a, c) => a + c.count - 1, 0)} column(s) could not be
               told apart
             </h4>

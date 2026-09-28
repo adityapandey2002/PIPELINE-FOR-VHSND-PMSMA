@@ -10,6 +10,8 @@ export interface ParseTask {
   sheetName?: string;
   sizeBytes: number;
   importedAt: string;
+  /** Field orientation; `auto` flips an export whose fields run down the side. */
+  orientation?: "auto" | "upright" | "flipped";
 }
 
 export interface ValidateTask {
@@ -79,6 +81,7 @@ export function runParse(task: ParseTask, onProgress?: (phase: string) => void):
         sheetName: task.sheetName,
         sizeBytes: task.sizeBytes,
         importedAt: task.importedAt,
+        orientation: task.orientation,
       };
       worker.postMessage({ type: "parse", payload }, [task.buffer]);
     } else {
@@ -98,6 +101,7 @@ export function runParse(task: ParseTask, onProgress?: (phase: string) => void):
             sheetName: task.sheetName,
             sizeBytes: task.sizeBytes,
             importedAt: task.importedAt,
+            orientation: task.orientation,
           });
         })
         .then((data) => {

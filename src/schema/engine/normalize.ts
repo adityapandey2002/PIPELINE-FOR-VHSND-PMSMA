@@ -41,6 +41,12 @@ export interface ParsedSheet {
    */
   collapsedColumns: CollapsedColumn[];
   meta: SourceMeta;
+  /**
+   * True when the sheet listed its fields down the first column instead of
+   * across the header row and was flipped back during parse. The UI uses it to
+   * say why columns suddenly became available.
+   */
+  transposed?: boolean;
 }
 
 export interface ParseSource {
@@ -251,6 +257,58 @@ export interface HeaderLayout {
 /** Fraction of a row's cells that must be known codes to accept it as a code row. */
 const CODE_ROW_THRESHOLD = 0.9;
 
+/** Minimum height before a sheet is even considered sideways. */
+const TRANSPOSE_MIN_ROWS = 30;
+/** Share of first-column cells that must resolve to a known field. */
+const TRANSPOSE_SIDE_RATE = 0.6;
+/** Share of header cells (after the first) that may still resolve to a field. */
+const TRANSPOSE_HEAD_RATE = 0.6;
+
+/** Swap rows and columns so fields run across the top again. */
+export function transposeAoa(aoa: unknown[][]): unknown[][] {
+  const cols = aoa.reduce((max, row) => Math.max(max, row.length), 0);
+  const out: unknown[][] = [];
+  for (let c = 0; c < cols; c++) {
+    const line: unknown[] = [];
+    for (let r = 0; r < aoa.length; r++) line.push(aoa[r]?.[c] ?? null);
+    out.push(line);
+  }
+  return out;
+}
+
+/**
+ * Detect an export that lists fields down column A with one submission per
+ * column (a pivot of the normal ODK layout). Those files contain the data --
+ * every column simply sits where the parser never looks -- so recognising the
+ * orientation is what makes their comparisons readable.
+ *
+ * Two independent signals keep a normal sheet safe: column A has to look like
+ * field titles, and the top row has to look like values rather than titles.
+ */
+export function detectTransposed(
+  aoa: unknown[][],
+  known: Set<string>,
+  resolveLabel: (label: string) => string,
+): boolean {
+  const rows = aoa.length;
+  if (rows < TRANSPOSE_MIN_ROWS) return false;
+  const cols = aoa.reduce((max, row) => Math.max(max, row.length), 0);
+  if (cols < 2 || rows < cols * 2) return false;
+
+  const rate = (cells: unknown[]): number => {
+    const filled = cells.filter((c) => c !== null && c !== undefined && String(c).trim() !== "");
+    if (filled.length === 0) return 0;
+    const hits = filled.filter((c) => {
+      const code = resolveLabel(String(c));
+      return code !== "" && known.has(code);
+    }).length;
+    return hits / filled.length;
+  };
+
+  if (rate(aoa.slice(0, 80).map((row) => row[0])) < TRANSPOSE_SIDE_RATE) return false;
+  return rate((aoa[0] ?? []).slice(1)) < TRANSPOSE_HEAD_RATE;
+}
+
 /**
  * Locate the header block. Prefers a code row (2 headers) and falls back to a
  * single label row, which is resolved through the header normalizer.
@@ -273,12 +331,45 @@ export function detectHeaderLayout(
     return { codes: candidate, labels, headerRows: 2, dataStart: 2 };
   }
 
+  // A flipped sheet carries the field titles twice (the title column and the
+  // duplicate beside it), so its second row is headers, not the first record.
+  if (isDuplicateLabelRow(labels, candidate, resolveLabel)) {
+    return {
+      codes: labels.map((l) => (l.trim() === "" ? "" : resolveLabel(l))),
+      labels,
+      headerRows: 2,
+      dataStart: 2,
+    };
+  }
+
   return {
     codes: labels.map((l) => (l.trim() === "" ? "" : resolveLabel(l))),
     labels,
     headerRows: 1,
     dataStart: 1,
   };
+}
+
+/** True when row 2 repeats row 1's fields, as titles or as resolved codes. */
+function isDuplicateLabelRow(
+  labels: string[],
+  candidate: string[],
+  resolveLabel: (label: string) => string,
+): boolean {
+  if (labels.length === 0 || candidate.length === 0) return false;
+  let compared = 0;
+  let same = 0;
+  for (let i = 0; i < Math.max(labels.length, candidate.length); i++) {
+    const a = (labels[i] ?? "").trim();
+    const b = (candidate[i] ?? "").trim();
+    if (a === "" && b === "") continue;
+    compared += 1;
+    const ra = a === "" ? "" : resolveLabel(a);
+    const rb = b === "" ? "" : resolveLabel(b);
+    const equal = ra !== "" && rb !== "" ? ra === rb : a === b;
+    if (equal) same += 1;
+  }
+  return compared > 0 && same / compared >= 0.9;
 }
 
 /**
@@ -294,6 +385,7 @@ export function normalizeAoa(
   source: ParseSource,
   knownColumns: Set<string>,
   resolveLabel: (label: string) => string,
+  transposed = false,
 ): ParsedSheet {
   const layout = detectHeaderLayout(aoa, knownColumns, resolveLabel);
   const typeMap = buildTypeMap(fields);
@@ -368,6 +460,7 @@ export function normalizeAoa(
     headerMap,
     presentColumns,
     collapsedColumns: [...collapsed.values()],
+    ...(transposed ? { transposed: true } : {}),
     meta: {
       fileName: source.fileName,
       sheetName: source.sheetName,

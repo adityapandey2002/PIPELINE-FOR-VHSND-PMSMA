@@ -9,6 +9,11 @@ export type ParseRequest = {
     sheetName?: string;
     sizeBytes: number;
     importedAt: string;
+    /**
+     * Field orientation. `auto` flips an export that lists its fields down the
+     * first column; the other two are the user's manual override on ingest.
+     */
+    orientation?: "auto" | "upright" | "flipped";
   };
 };
 
@@ -37,11 +42,15 @@ export async function parsePayload(payload: ParseRequest["payload"]): Promise<Pa
   });
   if (aoa.length === 0) throw new Error("The sheet is empty (no data rows).");
 
-  const { normalizeAoa } = await import("@/schema/engine/normalize");
+  const { normalizeAoa, detectTransposed, transposeAoa } = await import("@/schema/engine/normalize");
   const { buildHeaderMap } = await import("@/schema/engine/headerNormalizer");
   const { getDatasetSchema } = await import("@/schema");
   const schema = getDatasetSchema("2026.1", "vhsnd");
   const header = buildHeaderMap();
+
+  const orientation = payload.orientation ?? "auto";
+  const sideways = detectTransposed(aoa, header.knownColumns, header.normalize);
+  const flip = orientation === "flipped" ? true : orientation === "upright" ? false : sideways;
 
   const source: ParseSource = {
     fileName: payload.fileName,
@@ -50,7 +59,14 @@ export async function parsePayload(payload: ParseRequest["payload"]): Promise<Pa
     headerRow: 1,
     importedAt: payload.importedAt,
   };
-  return normalizeAoa(aoa, schema.fields, source, header.knownColumns, header.normalize);
+  return normalizeAoa(
+    flip ? transposeAoa(aoa) : aoa,
+    schema.fields,
+    source,
+    header.knownColumns,
+    header.normalize,
+    flip,
+  );
 }
 
 const scope = workerScope();
