@@ -39,7 +39,7 @@ describe("ODK label export (DATASET_1.xlsx)", () => {
     expect(parsed.headerMap["Importance of prenatal checkups"]).toBe("H2_A");
     expect(parsed.headerMap["How many women are due for TT-Yes vaccination today?"]).toBe("E2_3");
     expect(parsed.headerMap["working weighing machine for adults"]).toBe("G3_A");
-    expect(parsed.headerMap["Comment"]).toBe("Comment");
+    expect(parsed.headerMap["Comment"]).toBe("remarks");
   });
 
   it("derives clean rows and produces non-empty chart points", async () => {

@@ -380,6 +380,26 @@ function isDuplicateLabelRow(
 }
 
 /**
+ * Strip ODK export artifacts: trailing " Yes"/" No" appended to boolean/select-one headers.
+ * e.g., "Name of ANM Yes" -> "Name of ANM"
+ */
+function cleanOdkHeaderArtifacts(aoa: unknown[][]): unknown[][] {
+  if (aoa.length === 0) return aoa;
+  const headerRow = aoa[0];
+  if (!headerRow) return aoa;
+  return [
+    headerRow.map((cell) => {
+      if (typeof cell !== "string") return cell;
+      return cell
+        .replace(/\s+Yes\s*$/, "")
+        .replace(/\s+No\s*$/, "")
+        .trim();
+    }),
+    ...aoa.slice(1),
+  ];
+}
+
+/**
  * Point headers at the fields the user chose. Keyed by the text the sheet
  * shows -- the label when there is one, otherwise the code of its own row --
  * so a mapping survives either header shape.
@@ -413,7 +433,8 @@ export function normalizeAoa(
   transposed = false,
   headerOverrides?: Record<string, string>,
 ): ParsedSheet {
-  const layout = detectHeaderLayout(aoa, knownColumns, resolveLabel);
+  const cleaned = cleanOdkHeaderArtifacts(aoa);
+  const layout = detectHeaderLayout(cleaned, knownColumns, resolveLabel);
   applyHeaderOverrides(layout, headerOverrides);
   const typeMap = buildTypeMap(fields);
   const defById = new Map(fields.map((f) => [f.id, f]));
