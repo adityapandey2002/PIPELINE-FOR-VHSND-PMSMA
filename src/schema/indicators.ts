@@ -2,9 +2,10 @@ import type { CellValue } from "@/contracts/dataset";
 import type { CleanRow } from "@/contracts/resolution";
 import type { ChartKind, ChartSuggestion } from "@/contracts/chart";
 import type { Aggregation, ComputedStats, DataType, IndicatorDef } from "@/contracts/indicator";
-import { coerceNumber } from "@/schema/engine/cellCoercers";
+import { coerceBoolean, coerceNumber } from "@/schema/engine/cellCoercers";
 import { isDirectChildOf } from "@/schema/engine/groupChildren";
 import { columnLabel } from "@/schema/columns-vhsnd";
+import { getDatasetSchema, SCHEMA_VERSION } from "@/schema";
 
 /* ---------------------------------- registry ---------------------------------- */
 
@@ -97,6 +98,19 @@ export const VHSND_INDICATORS: IndicatorDef[] = [
 export interface SeriesPoint {
   name: string;
   value: number;
+  /** Suffix shown next to the value on hover, e.g. "%". */
+  unit?: string;
+  /** The raw numbers behind a percentage/count (e.g. "9 of 20 sites"). */
+  detail?: string;
+}
+
+/** Physical field types, looked up once: indicators read booleans as counts of Yes. */
+let FIELD_TYPES: Map<string, string> | null = null;
+function schemaFieldType(code: string): string | undefined {
+  if (!FIELD_TYPES) {
+    FIELD_TYPES = new Map(getDatasetSchema(SCHEMA_VERSION, "vhsnd").fields.map((f) => [f.id, f.type]));
+  }
+  return FIELD_TYPES.get(code);
 }
 
 export interface IndicatorSeries {
@@ -153,7 +167,11 @@ export function evaluateIndicator(rows: CleanRow[], def: IndicatorDef): Indicato
         });
       }
       const days = [...byDay.keys()].sort();
-      const points: SeriesPoint[] = days.map((day) => ({ name: day, value: byDay.get(day) ?? 0 }));
+      const points: SeriesPoint[] = days.map((day) => ({
+        name: day,
+        value: byDay.get(day) ?? 0,
+        detail: `${byDay.get(day) ?? 0} of ${rows.length} rows`,
+      }));
       timeLabels.push(...days);
       const isoDay = /^\d{4}-\d{2}-\d{2}$/;
       if (days.length > 1 && isoDay.test(days[0]) && isoDay.test(days[days.length - 1])) {
@@ -177,7 +195,7 @@ export function evaluateIndicator(rows: CleanRow[], def: IndicatorDef): Indicato
           byDim.set(key, (byDim.get(key) ?? 0) + 1);
         }
         points = [...byDim.entries()]
-          .map(([name, value]) => ({ name, value }))
+          .map(([name, value]) => ({ name, value, detail: `${value} of ${rows.length} rows` }))
           .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
       } else if (def.dimensionField === "B2A") {
         const byDim = new Map<string, number>();
@@ -186,7 +204,7 @@ export function evaluateIndicator(rows: CleanRow[], def: IndicatorDef): Indicato
           byDim.set(key, (byDim.get(key) ?? 0) + 1);
         }
         points = [...byDim.entries()]
-          .map(([name, value]) => ({ name, value }))
+          .map(([name, value]) => ({ name, value, detail: `${value} of ${rows.length} rows` }))
           .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
       } else {
         // Group option breakdown: count per exploded option column.
@@ -201,7 +219,7 @@ export function evaluateIndicator(rows: CleanRow[], def: IndicatorDef): Indicato
           }
         }
         points = [...counts.entries()]
-          .map(([code, value]) => ({ name: optionLabel(root, code), value }))
+          .map(([code, value]) => ({ name: optionLabel(root, code), value, detail: `${value} of ${rows.length} rows` }))
           .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
       }
       stats.cardinality = points.length;
@@ -212,13 +230,28 @@ export function evaluateIndicator(rows: CleanRow[], def: IndicatorDef): Indicato
 
     case "numeric":
     case "numeric-distribution": {
+      // Boolean fields (ANM1, ASHA1, C6, New, …) have no arithmetic to do: the
+      // useful figure is how many rows answered Yes. `false` is an answer, so
+      // only rows with no answer at all count towards missingRate.
+      const isBoolean = schemaFieldType(def.valueField) === "boolean";
       const values: number[] = [];
+      let answered = 0;
+      let yes = 0;
       for (const row of rows) {
-        const num = coerceNumber(row.values[def.valueField]);
+        const raw = row.values[def.valueField];
+        if (isBoolean) {
+          const flag = coerceBoolean(raw);
+          if (flag === null) continue;
+          answered += 1;
+          if (flag) yes += 1;
+          values.push(flag ? 1 : 0);
+          continue;
+        }
+        const num = coerceNumber(raw);
         if (num !== null) values.push(num);
       }
       const total = rows.length;
-      stats.missingRate = total ? 1 - values.length / total : 1;
+      stats.missingRate = total ? 1 - (isBoolean ? answered : values.length) / total : 1;
       const unique = new Set(values).size;
       stats.cardinality = unique;
       if (values.length > 1) {
@@ -227,11 +260,13 @@ export function evaluateIndicator(rows: CleanRow[], def: IndicatorDef): Indicato
         stats.numericShape = dev / (Math.abs(mean) + 1e-9) < 0.5 ? "flat" : "spread";
       }
       let value: number;
-      if (def.aggregation === "sum") value = values.reduce((a, b) => a + b, 0);
+      if (isBoolean) value = yes;
+      else if (def.aggregation === "sum") value = values.reduce((a, b) => a + b, 0);
       else if (def.aggregation === "avg") value = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
       else value = values.length;
       samples.push(...values);
-      const points: SeriesPoint[] = [{ name: def.label, value }];
+      const detail = isBoolean ? `${yes} Yes of ${answered} answered` : `${values.length} of ${total} rows with a value`;
+      const points: SeriesPoint[] = [{ name: def.label, value, detail }];
       return { points, samples, timeLabels, stats };
     }
 

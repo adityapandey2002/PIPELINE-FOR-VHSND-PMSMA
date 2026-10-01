@@ -11,7 +11,27 @@ describe("evaluateIndicator", () => {
   it("sums numeric columns", () => {
     const def = VHSND_INDICATORS.find((i) => i.id === "anemia-screened")!;
     const series = evaluateIndicator([clean({ H1HB: 3 }), clean({ H1HB: 4 })], def);
-    expect(series.points).toEqual([{ name: def.label, value: 7 }]);
+    expect(series.points[0].value).toBe(7);
+    expect(series.points[0].detail).toBe("2 of 2 rows with a value");
+  });
+
+  it("counts Yes for boolean indicators instead of treating booleans as missing", () => {
+    const def = VHSND_INDICATORS.find((i) => i.id === "asha-survey")!;
+    const series = evaluateIndicator(
+      [clean({ ASHA1: true }), clean({ ASHA1: false }), clean({ ASHA1: true }), clean({ ASHA1: null })],
+      def,
+    );
+    expect(series.points[0].value).toBe(2);
+    expect(series.points[0].detail).toBe("2 Yes of 3 answered");
+    expect(series.stats.missingRate).toBeCloseTo(0.25, 5);
+  });
+
+  it("does not report a fully answered boolean column as 100% missing", () => {
+    const def = VHSND_INDICATORS.find((i) => i.id === "anm-mgmt")!;
+    const series = evaluateIndicator([clean({ ANM1: true }), clean({ ANM1: false })], def);
+    expect(series.points[0].value).toBe(1);
+    expect(series.stats.missingRate).toBe(0);
+    expect(series.stats.missingRate).toBeLessThan(1);
   });
 
   it("counts group options from exploded columns", () => {
@@ -36,8 +56,8 @@ describe("evaluateIndicator", () => {
     ];
     const series = evaluateIndicator(rows, def);
     expect(series.points).toEqual([
-      { name: "2024-01-15", value: 2 },
-      { name: "2024-01-16", value: 1 },
+      { name: "2024-01-15", value: 2, detail: "2 of 3 rows" },
+      { name: "2024-01-16", value: 1, detail: "1 of 3 rows" },
     ]);
   });
 
@@ -66,6 +86,19 @@ describe("indicator value fields are aggregable", () => {
     expect(def.valueField).toBe("H3A_1");
     const series = evaluateIndicator([clean({ H3A: true, H3A_1: 4 }), clean({ H3A: false, H3A_1: 0 })], def);
     expect(series.points[0].value).toBe(4);
+  });
+
+  it("reads every boolean valueField as a count of Yes, never 100% missing", () => {
+    const booleanFields = VHSND_INDICATORS.filter(
+      (i) => i.dataType === "numeric" && byId.get(i.valueField)?.type === "boolean",
+    );
+    expect(booleanFields.length).toBeGreaterThan(0);
+    for (const def of booleanFields) {
+      const rows = [clean({ [def.valueField]: true }), clean({ [def.valueField]: false })];
+      const series = evaluateIndicator(rows, def);
+      expect(series.points[0].value).toBe(1);
+      expect(series.stats.missingRate).toBe(0);
+    }
   });
 });
 

@@ -387,3 +387,74 @@ describe("registry integrity", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
+
+describe("hover detail behind every chart", () => {
+  const rows = [
+    row({
+      B2A: "BlockA", B7: "AWC", G3_E: "Yes", G3_F: "Yes", G3_C: "Yes",
+      H1HB: 3, H1HB1: 1, H1HB_4: 1, H1BP: 10, H1BP1: 2, H1PB2: 1,
+      H1_A: "Yes", H1_B: "Yes", H1_C: "Yes", H1_D: "No", H1_E: "No", H1_F: "No", H16: "Yes",
+      H3_A: "Yes", H3_B: "No", H3_C: "No", H3_D: "No",
+      H2_A: "Yes", H2_B: "Yes", H2_C: "No", H2_D: "No", H2_E: "No", H2_F: "No", H2_G: "No",
+      H4_A: "Yes", H4_B: "Yes", H4_C: "Yes", H4_D: "No", H4_E: "No", H4_F: "No", H4_G: "No", H4_H: "No",
+      H14: "Yes", H15: "No", H18: "Yes", H20: "No", H21: "Yes", H12B: "No",
+      H3A: 2, H3_99: "No", H4_99: "No", H25: 4,
+      G12_J: "Yes", G12_K: "No", G12_L: "No", G12_O: "No", G12_M: "Yes",
+      H5_1_1: 12, H5_2_1: 8, H6_1_1: 4,
+      H32_A: "Yes", H32_B: "No", H32_88: "No",
+      C11_1: "Health Worker", E2_1: 1, E2_2: 0, H9: "Yes", E2_5: 2,
+      ASHA1: "Yes", ANM1: "Yes", C6: "Yes", New: "Yes",
+      F: "2026-01-05T10:00:00", SubmissionDate: "2026-01-05T10:00:00",
+    }),
+    row({
+      B2A: "BlockB", B7: "Sub-centre", G3_E: "No", G3_F: "No", G3_C: "No",
+      H1HB: 0, H1HB1: 0, H1HB_4: 0, H1BP: 5, H1BP1: 0, H1PB2: 0,
+      H1_A: "No", H1_B: "No", H1_C: "No", H1_D: "No", H1_E: "No", H1_F: "No", H16: "No",
+      H3_A: "No", H3_B: "No", H3_C: "No", H3_D: "No",
+      H2_A: "No", H2_B: "No", H2_C: "No", H2_D: "No", H2_E: "No", H2_F: "No", H2_G: "No",
+      H4_A: "No", H4_B: "No", H4_C: "No", H4_D: "No", H4_E: "No", H4_F: "No", H4_G: "No", H4_H: "No",
+      H14: "No", H15: "No", H18: "No", H20: "No", H21: "No", H12B: "No",
+      H3A: 1, H3_99: "Yes", H4_99: "Yes", H25: 1,
+      G12_J: "No", G12_K: "No", G12_L: "No", G12_O: "No", G12_M: "No",
+      H5_1_1: 20, H5_2_1: 15, H6_1_1: 6,
+      H32_A: "No", H32_B: "Yes", H32_88: "No",
+      C11_1: "", E2_1: 0, E2_2: 2, H9: "No", E2_5: 4,
+      ASHA1: "No", ANM1: "No", C6: "No", New: "No",
+      F: "2026-01-12T10:00:00", SubmissionDate: "2026-01-12T10:00:00",
+    }),
+  ];
+
+  it("gives every comparison point a detail line", () => {
+    for (const def of COMPARISONS) {
+      const res = def.compute(rows);
+      for (const p of res.series.points) {
+        expect(p.detail, `${def.id} · ${p.name}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("marks percentage points with a % unit", () => {
+    for (const id of ["anc-pnc-bias", "basic-vs-advanced", "anm-safety-hygiene", "danger-sign-gap", "prenatal-counseling", "asha-digital-by-block"]) {
+      const res = COMPARISONS.find((c) => c.id === id)!.compute(rows);
+      for (const p of res.series.points) expect(p.unit, `${id} · ${p.name}`).toBe("%");
+    }
+  });
+
+  it("shows counts behind percentages (pctDetail)", () => {
+    const res = COMPARISONS.find((c) => c.id === "danger-sign-gap")!.compute(rows);
+    expect(res.series.points[0].value).toBe(50);
+    expect(res.series.points[0].detail).toBe("1 of 2 sites");
+  });
+
+  it("gives grouped rows and gauges a detail line", () => {
+    for (const def of COMPARISONS) {
+      const res = def.compute(rows);
+      for (const g of res.extra?.groups ?? []) {
+        expect(g.detail, `${def.id} · group ${g.name}`).toBeTruthy();
+      }
+      for (const g of res.extra?.gauges ?? []) {
+        expect(g.detail, `${def.id} · gauge ${g.name}`).toBeTruthy();
+      }
+    }
+  });
+});

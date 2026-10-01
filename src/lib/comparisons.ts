@@ -67,6 +67,33 @@ export function pctTrue(rows: CleanRow[], code: string): number {
   return round1((countTrue(rows, code) / rows.length) * 100);
 }
 
+/** Hover text behind a % True point: the counts that produced it. */
+function pctDetail(rows: CleanRow[], code: string): string {
+  return `${countTrue(rows, code)} of ${rows.length} sites`;
+}
+
+/** A percentage point carrying its underlying counts for the tooltip. */
+function pctPoint(name: string, value: number, detail: string): SeriesPoint {
+  return { name, value, unit: "%", detail };
+}
+
+/** A count point carrying its share of the population for the tooltip. */
+function countPoint(name: string, value: number, total: number, noun = "sites"): SeriesPoint {
+  if (total <= 0) return { name, value, detail: `no ${noun} in scope` };
+  const pct = Math.round((value / total) * 100);
+  return { name, value, detail: `${value} of ${total} ${noun} (${pct}%)` };
+}
+
+/** Points mirrored from grouped rows, keeping the hover detail/unit they carry. */
+function pointsFromGroups(groups: ComparisonGroupRow[], valueKey = "value"): SeriesPoint[] {
+  return groups.map((g) => {
+    const point: SeriesPoint = { name: g.name, value: Number(g[valueKey] ?? 0) };
+    if (typeof g.unit === "string") point.unit = g.unit;
+    if (typeof g.detail === "string") point.detail = g.detail;
+    return point;
+  });
+}
+
 /** Sum of numeric column across rows (text numbers cast first). */
 export function sumNum(rows: CleanRow[], code: string): number {
   let total = 0;
@@ -92,6 +119,13 @@ function meanPctTrue(rows: CleanRow[], codes: string[]): number {
   if (rows.length === 0 || present.length === 0) return 0;
   const total = present.reduce((acc, c) => acc + countTrue(rows, c), 0);
   return round1((total / (rows.length * present.length)) * 100);
+}
+
+/** Hover text behind a mean-% point: pooled Yes answers over pooled cells. */
+function meanDetail(rows: CleanRow[], codes: string[]): string {
+  const { present } = presentCodes(rows, codes);
+  const yes = present.reduce((acc, c) => acc + countTrue(rows, c), 0);
+  return `${yes} Yes of ${rows.length * present.length} cells (${present.length}/${codes.length} columns)`;
 }
 
 function groupBy(rows: CleanRow[], dim: string): Map<string, CleanRow[]> {
@@ -154,6 +188,8 @@ export interface GaugeStat {
   name: string;
   value: number;
   display: string;
+  /** Hover detail behind the gauge, e.g. "12 of 20 sites". */
+  detail?: string;
 }
 
 export interface WaffleStat {
@@ -175,6 +211,8 @@ export interface ScatterStat {
   name: string;
   x: number;
   y: number;
+  /** Hover detail behind the point. */
+  detail?: string;
 }
 
 export interface ComparisonExtra {
@@ -299,7 +337,7 @@ export const COMPARISONS: ComparisonDef[] = [
       ];
       return mkResult(
         "funnel",
-        steps.map((s) => ({ name: s.name, value: s.value })),
+        steps.map((s) => countPoint(s.name, s.value, rows.length)),
         funnelInsight(steps),
         undefined,
         present,
@@ -327,7 +365,7 @@ export const COMPARISONS: ComparisonDef[] = [
         steps[1].value > 0 ? Math.round((steps[2].value / steps[1].value) * 100) : 0;
       return mkResult(
         "funnel",
-        steps.map((s) => ({ name: s.name, value: s.value })),
+        steps.map((s) => countPoint(s.name, s.value, rows.length)),
         `Screening conversion (measured / machine working): ${conversion}%. ${funnelInsight(steps)}`,
         undefined,
         present,
@@ -349,7 +387,15 @@ export const COMPARISONS: ComparisonDef[] = [
         for (const [name, bucket] of groupBy(rows, "B2A")) {
           const equipment = countTrue(bucket, "G3_F");
           const tested = countTrue(bucket, "H1_F");
-          groups.push({ name, equipment, tested });
+          groups.push({
+            name,
+            equipment,
+            tested,
+            n: bucket.length,
+            detail: `${bucket.length} sites in block`,
+            "detail:equipment": `${equipment} of ${bucket.length} sites with glucometer working`,
+            "detail:tested": `${tested} of ${bucket.length} sites with a sugar test done`,
+          });
         }
         groups.sort((a, b) => Number(b.equipment) - Number(a.equipment) || a.name.localeCompare(b.name));
       }
@@ -359,7 +405,11 @@ export const COMPARISONS: ComparisonDef[] = [
       const idle = totalEquip - totalTested;
       return mkResult(
         "grouped-bar",
-        groups.map((g) => ({ name: g.name, value: g.equipment as number })),
+        groups.map((g) => ({
+          name: g.name,
+          value: g.equipment as number,
+          detail: `${g.equipment} of ${g.n} sites with glucometer working`,
+        })),
         `District-wide execution ratio (tested / equipment available): ${ratio}%. Equipment idle at ${Math.max(idle, 0)} site(s) where the glucometer works but no sugar test was delivered.`,
         {
           groups,
@@ -389,8 +439,8 @@ export const COMPARISONS: ComparisonDef[] = [
       const ancPct = meanPctTrue(rows, anc);
       const pncPct = meanPctTrue(rows, pnc);
       const points = [
-        { name: "ANC average (%)", value: ancPct },
-        { name: "PNC average (%)", value: pncPct },
+        pctPoint("ANC average (%)", ancPct, meanDetail(rows, anc)),
+        pctPoint("PNC average (%)", pncPct, meanDetail(rows, pnc)),
       ];
       const gap = round1(ancPct - pncPct);
       const verdict =
@@ -401,8 +451,8 @@ export const COMPARISONS: ComparisonDef[] = [
           : `Balanced: ANC ${ancPct}% vs PNC ${pncPct}% (gap ${gap} points).`;
       return mkResult("grouped-bar", points, verdict, {
         groups: [
-          { name: "ANC average (%)", value: ancPct },
-          { name: "PNC average (%)", value: pncPct },
+          { name: "ANC average (%)", value: ancPct, unit: "%", detail: meanDetail(rows, anc) },
+          { name: "PNC average (%)", value: pncPct, unit: "%", detail: meanDetail(rows, pnc) },
         ],
         seriesKeys: [{ key: "value", label: "% True" }],
         barGroups: ["ANC", "PNC"],
@@ -431,7 +481,7 @@ export const COMPARISONS: ComparisonDef[] = [
       const advanced = meanPctTrue(rows, ["H1_D", "H1_E", "H1_F"]);
       return mkResult(
         "bar-horizontal",
-        points.map((p) => ({ name: p.name, value: p.value })),
+        points.map((p) => pctPoint(p.name, p.value, pctDetail(rows, p.code))),
         `Basic vitals average ${basic}% vs advanced diagnostics ${advanced}% — checkups ${
           basic - advanced > 15 ? "are mostly superficial rather than comprehensive" : "are reasonably comprehensive"
         }.`,
@@ -457,25 +507,33 @@ export const COMPARISONS: ComparisonDef[] = [
       const codes = ["B7", "G21", "G24"];
       const { present, missing } = presentCodes(rows, codes);
       const groups: ComparisonGroupRow[] = [];
+      const venueRow = (name: string, bucket: CleanRow[], code: string, pct: number): ComparisonGroupRow => {
+        const yes = countTrue(bucket, code);
+        return {
+          name,
+          ok: pct,
+          notOk: round1(100 - pct),
+          unit: "%",
+          detail: `${yes} of ${bucket.length} sites`,
+          "detail:ok": `${yes} of ${bucket.length} sites have it`,
+          "detail:notOk": `${bucket.length - yes} of ${bucket.length} sites are missing it`,
+        };
+      };
       if (present.includes("B7")) {
         for (const [name, bucket] of groupBy(rows, "B7")) {
-          const privacyPct = pctTrue(bucket, "G21");
-          const hygienePct = pctTrue(bucket, "G24");
-          groups.push({ name: `${name} · Privacy`, ok: privacyPct, notOk: round1(100 - privacyPct) });
-          groups.push({ name: `${name} · Soap & water`, ok: hygienePct, notOk: round1(100 - hygienePct) });
+          groups.push(venueRow(`${name} · Privacy`, bucket, "G21", pctTrue(bucket, "G21")));
+          groups.push(venueRow(`${name} · Soap & water`, bucket, "G24", pctTrue(bucket, "G24")));
         }
       } else {
-        const privacyPct = pctTrue(rows, "G21");
-        const hygienePct = pctTrue(rows, "G24");
-        groups.push({ name: "All venues · Privacy", ok: privacyPct, notOk: round1(100 - privacyPct) });
-        groups.push({ name: "All venues · Soap & water", ok: hygienePct, notOk: round1(100 - hygienePct) });
+        groups.push(venueRow("All venues · Privacy", rows, "G21", pctTrue(rows, "G21")));
+        groups.push(venueRow("All venues · Soap & water", rows, "G24", pctTrue(rows, "G24")));
       }
       const privacyAll = pctTrue(rows, "G21");
       const hygieneAll = pctTrue(rows, "G24");
       const venues = present.includes("B7") ? [...groupBy(rows, "B7").keys()] : ["all venues"];
       return mkResult(
         "stacked-100",
-        groups.map((g) => ({ name: g.name, value: g.ok as number })),
+        pointsFromGroups(groups, "ok"),
         `Across ${venues.length} venue type(s): privacy available at ${privacyAll}% of sites and soap/water at ${hygieneAll}% — ${
           hygieneAll < privacyAll ? "hygiene lags behind privacy" : "the two are comparable"
         }. AWC vs Sub-centre split is shown per bar.`,
@@ -501,9 +559,9 @@ export const COMPARISONS: ComparisonDef[] = [
       const codes = ["H18", "H20", "H21"];
       const { present, missing } = presentCodes(rows, codes);
       const points = [
-        { name: `Hub cutter (${columnShort("H18")})`, value: pctTrue(rows, "H18") },
-        { name: `Time on vials (${columnShort("H20")})`, value: pctTrue(rows, "H20") },
-        { name: `BCG/MR within 4 hrs (${columnShort("H21")})`, value: pctTrue(rows, "H21") },
+        pctPoint(`Hub cutter (${columnShort("H18")})`, pctTrue(rows, "H18"), pctDetail(rows, "H18")),
+        pctPoint(`Time on vials (${columnShort("H20")})`, pctTrue(rows, "H20"), pctDetail(rows, "H20")),
+        pctPoint(`BCG/MR within 4 hrs (${columnShort("H21")})`, pctTrue(rows, "H21"), pctDetail(rows, "H21")),
       ];
       const worst = [...points].sort((a, b) => a.value - b.value)[0];
       return mkResult(
@@ -541,10 +599,10 @@ export const COMPARISONS: ComparisonDef[] = [
       const idleSupply = cells[0][1];
       const supplied = cells[0][0] + cells[0][1];
       const points = [
-        { name: "Supply exists, test done", value: cells[0][0] },
-        { name: "Supply exists, test NOT done", value: cells[0][1] },
-        { name: "No supply, test done", value: cells[1][0] },
-        { name: "No supply, test NOT done", value: cells[1][1] },
+        countPoint("Supply exists, test done", cells[0][0], rows.length),
+        countPoint("Supply exists, test NOT done", cells[0][1], rows.length),
+        countPoint("No supply, test done", cells[1][0], rows.length),
+        countPoint("No supply, test NOT done", cells[1][1], rows.length),
       ];
       return mkResult(
         "heatmap",
@@ -591,7 +649,7 @@ export const COMPARISONS: ComparisonDef[] = [
       const spread = boxes.map((b) => `${b.name.split(" (")[0]}: median ${b.med}`).join("; ");
       return mkResult(
         "box",
-        boxes.map((b) => ({ name: b.name, value: b.med })),
+        boxes.map((b) => ({ name: b.name, value: b.med, detail: `median of ${b.n} readings` })),
         boxes.length
           ? `Medians (outliers >180 filtered): ${spread}. Consistent medians suggest standardised dosing; widely different spreads suggest random quantities.`
           : "No numeric IFA dispensing data available (columns missing or all non-numeric).",
@@ -617,8 +675,8 @@ export const COMPARISONS: ComparisonDef[] = [
       const supplyPct = rows.length ? round1((withSupply / rows.length) * 100) : 0;
       const counselPct = pctTrue(rows, "H12B");
       const points = [
-        { name: "FP commodities available", value: supplyPct },
-        { name: "FP counseling done", value: counselPct },
+        pctPoint("FP commodities available", supplyPct, `${withSupply} of ${rows.length} sites`),
+        pctPoint("FP counseling done", counselPct, pctDetail(rows, "H12B")),
       ];
       const gap = round1(supplyPct - counselPct);
       return mkResult(
@@ -629,8 +687,8 @@ export const COMPARISONS: ComparisonDef[] = [
         }`,
         {
           gauges: [
-            { name: "FP commodities available", value: supplyPct, display: `${supplyPct}%` },
-            { name: "FP counseling done", value: counselPct, display: `${counselPct}%` },
+            { name: "FP commodities available", value: supplyPct, display: `${supplyPct}%`, detail: `${withSupply} of ${rows.length} sites` },
+            { name: "FP counseling done", value: counselPct, display: `${counselPct}%`, detail: pctDetail(rows, "H12B") },
           ],
         },
         present,
@@ -656,13 +714,21 @@ export const COMPARISONS: ComparisonDef[] = [
       let running = 0;
       const groups: ComparisonGroupRow[] = items.map((i) => {
         running += i.value;
-        return { name: `${i.name} (${i.code})`, value: i.value, cum: sum > 0 ? round1((running / sum) * 100) : 0 };
+        return {
+          name: `${i.name} (${i.code})`,
+          value: i.value,
+          cum: sum > 0 ? round1((running / sum) * 100) : 0,
+          unit: "%",
+          detail: pctDetail(rows, i.code),
+          "detail:value": pctDetail(rows, i.code),
+          "detail:cum": `cumulative share of ${round1(sum)} total points`,
+        };
       });
       const danger = items.find((i) => i.code === "H2_E");
       const skipped = items.filter((i) => i.value < 50).map((i) => i.name);
       return mkResult(
         "pareto",
-        items.map((i) => ({ name: i.name, value: i.value })),
+        items.map((i) => pctPoint(i.name, i.value, pctDetail(rows, i.code))),
         `${skipped.length ? `Topics below 50% coverage: ${skipped.join(", ")}. ` : "All topics above 50% coverage. "}Danger signs counseling (H2_E) at ${
           danger ? danger.value : 0
         }% ${danger && danger.value < 50 ? "— systematically skipped by ANMs." : "— adequately covered."}`,
@@ -690,8 +756,8 @@ export const COMPARISONS: ComparisonDef[] = [
       const cared = Math.max(basis.length - ignored, 0);
       const ignorePct = basis.length ? round1((ignored / basis.length) * 100) : 0;
       const points = [
-        { name: "Received actual PNC care", value: cared },
-        { name: "Attended but ignored", value: ignored },
+        countPoint("Received actual PNC care", cared, basis.length, "mothers"),
+        countPoint("Attended but ignored", ignored, basis.length, "mothers"),
       ];
       return mkResult(
         "donut",
@@ -716,9 +782,9 @@ export const COMPARISONS: ComparisonDef[] = [
       const codes = ["H32_A", "H32_B", "H32_88"];
       const { present, missing } = presentCodes(rows, codes);
       const points = [
-        { name: `RCH register (${columnShort("H32_A")})`, value: countTrue(rows, "H32_A") },
-        { name: `Rough register (${columnShort("H32_B")})`, value: countTrue(rows, "H32_B") },
-        { name: `Other (${columnShort("H32_88")})`, value: countTrue(rows, "H32_88") },
+        countPoint(`RCH register (${columnShort("H32_A")})`, countTrue(rows, "H32_A"), rows.length),
+        countPoint(`Rough register (${columnShort("H32_B")})`, countTrue(rows, "H32_B"), rows.length),
+        countPoint(`Other (${columnShort("H32_88")})`, countTrue(rows, "H32_88"), rows.length),
       ];
       const total = points.reduce((a, p) => a + p.value, 0);
       const roughPct = total > 0 ? Math.round((points[1].value / total) * 100) : 0;
@@ -743,17 +809,17 @@ export const COMPARISONS: ComparisonDef[] = [
       const groups: ComparisonGroupRow[] = [];
       if (present.includes("B2A")) {
         for (const [name, bucket] of groupBy(rows, "B2A")) {
-          groups.push({ name, value: pctTrue(bucket, "ASHA1") });
+          groups.push({ name, value: pctTrue(bucket, "ASHA1"), unit: "%", detail: pctDetail(bucket, "ASHA1") });
         }
         groups.sort((a, b) => (b.value as number) - (a.value as number) || a.name.localeCompare(b.name));
       } else {
-        groups.push({ name: "All blocks", value: pctTrue(rows, "ASHA1") });
+        groups.push({ name: "All blocks", value: pctTrue(rows, "ASHA1"), unit: "%", detail: pctDetail(rows, "ASHA1") });
       }
       const low = groups.filter((g) => (g.value as number) < 50).map((g) => g.name);
       const overall = pctTrue(rows, "ASHA1");
       return mkResult(
         "bar-vertical",
-        groups.map((g) => ({ name: g.name, value: g.value as number })),
+        pointsFromGroups(groups),
         `Overall m-ASHA adoption: ${overall}%. ${low.length ? `Blocks actively rejecting the m-ASHA digital workflow (<50%): ${low.join(", ")}.` : "No block below 50% adoption."}`,
         { groups },
         present,
@@ -772,11 +838,16 @@ export const COMPARISONS: ComparisonDef[] = [
       const groups: ComparisonGroupRow[] = [];
       if (present.includes("C11_1")) {
         for (const [name, bucket] of groupBy(rows, "C11_1")) {
-          groups.push({ name: name === "(blank)" ? "No Supervisor" : name, value: round1(meanNum(bucket, "H25")) });
+          const label = name === "(blank)" ? "No Supervisor" : name;
+          groups.push({
+            name: label,
+            value: round1(meanNum(bucket, "H25")),
+            detail: `mean of ${bucket.length} sessions`,
+          });
         }
         groups.sort((a, b) => (b.value as number) - (a.value as number));
       } else {
-        groups.push({ name: "All sessions", value: round1(meanNum(rows, "H25")) });
+        groups.push({ name: "All sessions", value: round1(meanNum(rows, "H25")), detail: `mean of ${rows.length} sessions` });
       }
       const withSup = groups.filter((g) => !/no supervisor/i.test(g.name));
       const without = groups.find((g) => /no supervisor/i.test(g.name));
@@ -790,7 +861,7 @@ export const COMPARISONS: ComparisonDef[] = [
                 : "teleconsultation continues without supervisory pressure."
             }`
           : "No supervisor-type breakdown available in this file.";
-      return mkResult("bar-vertical", groups.map((g) => ({ name: g.name, value: g.value as number })), comparison, { groups }, present, missing);
+      return mkResult("bar-vertical", pointsFromGroups(groups), comparison, { groups }, present, missing);
     },
   },
   {
@@ -811,11 +882,17 @@ export const COMPARISONS: ComparisonDef[] = [
         const inMcp = stdBool(r.values["H16"]);
         i += 1;
         if (done > 3 && inMcp === false) gapCount += 1;
-        if (present.includes("H16")) scatter.push({ name: `Site ${i}`, x: done, y: inMcp === null ? -1 : inMcp ? 1 : 0 });
+        if (present.includes("H16"))
+          scatter.push({
+            name: `Site ${i}`,
+            x: done,
+            y: inMcp === null ? -1 : inMcp ? 1 : 0,
+            detail: `${done} of ${svc.length} services done · MCP ${inMcp === null ? "unknown" : inMcp ? "maintained" : "not maintained"}`,
+          });
       }
       const points = [
-        { name: "Services done but not in MCP", value: gapCount },
-        { name: "Sites with >3 services", value: scatter.filter((s) => s.x > 3).length },
+        countPoint("Services done but not in MCP", gapCount, rows.length),
+        countPoint("Sites with >3 services", scatter.filter((s) => s.x > 3).length, rows.length),
       ];
       return mkResult(
         "scatter",
@@ -850,8 +927,8 @@ export const COMPARISONS: ComparisonDef[] = [
       }
       const attracted = flagged ? round1((presentCount / flagged) * 100) : 0;
       const points = [
-        { name: "Due-list couples/teens present (H9 Yes)", value: presentCount },
-        { name: "Due list exists but couples absent", value: Math.max(flagged - presentCount, 0) },
+        countPoint("Due-list couples/teens present (H9 Yes)", presentCount, flagged, "flagged sites"),
+        countPoint("Due list exists but couples absent", Math.max(flagged - presentCount, 0), flagged, "flagged sites"),
       ];
       return mkResult(
         "waffle",
@@ -878,8 +955,8 @@ export const COMPARISONS: ComparisonDef[] = [
       const women = pctTrue(rows, "H14");
       const children = pctTrue(rows, "H15");
       const points = [
-        { name: `Women danger signs (${columnShort("H14")})`, value: women },
-        { name: `Children danger signs (${columnShort("H15")})`, value: children },
+        pctPoint(`Women danger signs (${columnShort("H14")})`, women, pctDetail(rows, "H14")),
+        pctPoint(`Children danger signs (${columnShort("H15")})`, children, pctDetail(rows, "H15")),
       ];
       const worst = Math.min(women, children);
       return mkResult(
@@ -905,7 +982,7 @@ export const COMPARISONS: ComparisonDef[] = [
       const due = present.includes("E2_5") ? sumNum(rows, "E2_5") : 0;
       const total = present.includes("H1BP") ? sumNum(rows, "H1BP") : 0;
       const ratio = total > 0 ? round1((due / total) * 100) : 0;
-      const points = [{ name: "3rd/4th ANC attendance ratio", value: ratio }];
+      const points = [pctPoint("3rd/4th ANC attendance ratio", ratio, `${due} due of ${total} total attendance`)];
       return mkResult(
         "gauge",
         points,
@@ -915,7 +992,7 @@ export const COMPARISONS: ComparisonDef[] = [
             : "Late-ANC attendance is healthy relative to total attendance."
         }`,
         {
-          gauges: [{ name: "3rd/4th ANC attendance vs total", value: Math.min(ratio, 100), display: `${ratio}%` }],
+          gauges: [{ name: "3rd/4th ANC attendance vs total", value: Math.min(ratio, 100), display: `${ratio}%`, detail: `${due} due of ${total} total attendance` }],
         },
         present,
         missing,
@@ -951,15 +1028,18 @@ export const COMPARISONS: ComparisonDef[] = [
 
       const topBlocks = blocks.map(([name]) => name);
       const groups: ComparisonGroupRow[] = dims.map((d) => {
-        const row: ComparisonGroupRow = { name: d.label };
-        for (const [blockName, bucket] of blocks) row[blockName] = meanPctTrue(bucket, d.codes);
+        const row: ComparisonGroupRow = { name: d.label, unit: "%", detail: meanDetail(rows, d.codes) };
+        for (const [blockName, bucket] of blocks) {
+          row[blockName] = meanPctTrue(bucket, d.codes);
+          row[`detail:${blockName}`] = meanDetail(bucket, d.codes);
+        }
         return row;
       });
       const seriesKeys = topBlocks.map((b) => ({ key: b, label: b }));
 
-      const overall: ComparisonGroupRow = { name: "District" };
+      const overall: ComparisonGroupRow = { name: "District", unit: "%", detail: "district-wide mean" };
       for (const d of dims) overall[d.label] = meanPctTrue(rows, d.codes);
-      const scores = dims.map((d) => ({ name: d.label, value: meanPctTrue(rows, d.codes) }));
+      const scores = dims.map((d) => pctPoint(d.label, meanPctTrue(rows, d.codes), meanDetail(rows, d.codes)));
       const worst = [...scores].sort((a, b) => a.value - b.value)[0];
 
       return mkResult(
@@ -993,8 +1073,8 @@ export const COMPARISONS: ComparisonDef[] = [
         const bad = answered - good;
         goodTotal += good;
         badTotal += bad;
-        points.push({ name: `${columnShort(code)} - good (Yes)`, value: good });
-        points.push({ name: `${columnShort(code)} - bad (No)`, value: bad });
+        points.push({ name: `${columnShort(code)} - good (Yes)`, value: good, detail: `${good} of ${answered} answered rows` });
+        points.push({ name: `${columnShort(code)} - bad (No)`, value: bad, detail: `${bad} of ${answered} answered rows` });
         breakdown.push(`${code}: ${good} good / ${bad} bad`);
       }
       return mkResult(

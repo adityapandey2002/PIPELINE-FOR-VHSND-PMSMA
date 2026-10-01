@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import type { TooltipContentProps, TooltipPayloadEntry } from "recharts";
 import {
   Area,
   AreaChart,
@@ -39,6 +40,85 @@ const PALETTE = [
 ];
 
 const CUSTOM_KINDS = new Set(["box", "gauge", "waffle", "heatmap"]);
+
+type TipRow = {
+  name?: string;
+  detail?: string;
+  unit?: string;
+  x?: number;
+  y?: number;
+  [key: string]: unknown;
+};
+
+function tipNumber(v: number): string {
+  return Number.isInteger(v) ? v.toLocaleString("en-IN") : v.toLocaleString("en-IN", { maximumFractionDigits: 1 });
+}
+
+/** Per-series hover line for a multi-series row (`detail:<dataKey>` keys). */
+function seriesDetail(entry: TooltipPayloadEntry, row: TipRow): string | undefined {
+  const key = entry.dataKey === undefined || entry.dataKey === null ? "" : `detail:${String(entry.dataKey)}`;
+  const specific = key ? row[key] : undefined;
+  return typeof specific === "string" ? specific : undefined;
+}
+
+/**
+ * Hover card for every chart: the category, each series value with its unit,
+ * and the raw counts behind the number (e.g. "45% · 9 of 20 sites").
+ */
+function ChartTooltip({ active, payload, label }: TooltipContentProps): React.ReactNode {
+  if (!active || !payload || payload.length === 0) return null;
+  const row = (payload[0].payload ?? {}) as TipRow;
+  const unit = typeof row.unit === "string" ? row.unit : "";
+  const heading = label ?? (typeof row.name === "string" ? row.name : undefined);
+  const scatter = typeof row.x === "number" && typeof row.y === "number";
+  const shared = typeof row.detail === "string" ? row.detail : undefined;
+  const hasSeriesDetail = !scatter && payload.some((entry) => seriesDetail(entry, row));
+  return (
+    <div
+      style={{
+        background: "#0f172a",
+        color: "#f8fafc",
+        borderRadius: 8,
+        padding: "7px 10px",
+        fontSize: 11,
+        lineHeight: 1.5,
+        maxWidth: 300,
+        boxShadow: "0 6px 18px rgba(15,23,42,0.25)",
+      }}
+    >
+      {heading !== undefined && heading !== null && (
+        <p style={{ margin: "0 0 4px", fontWeight: 800, color: "#e2e8f0" }}>{String(heading)}</p>
+      )}
+      {scatter ? (
+        <div>
+          <span style={{ color: "#cbd5f5" }}>Services done: </span>
+          {tipNumber(row.x ?? 0)}
+          <span style={{ color: "#cbd5f5" }}> · In MCP: </span>
+          {row.y === 1 ? "Yes" : row.y === 0 ? "No" : "Unknown"}
+        </div>
+      ) : (
+        payload.map((entry, i) => {
+          const detail = hasSeriesDetail ? seriesDetail(entry, row) : i === 0 ? shared : undefined;
+          const value = entry.value;
+          const shown =
+            typeof value === "number" ? `${tipNumber(value)}${unit}` : value === undefined || value === null ? "" : String(value);
+          const entryName = entry.name === undefined || entry.name === null ? "" : String(entry.name);
+          const showName = payload.length > 1 && entryName !== "";
+          return (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
+              {showName && <span style={{ color: "#cbd5f5" }}>{entryName}</span>}
+              <span style={{ fontWeight: 800, textAlign: "right", marginLeft: showName ? 0 : "auto" }}>
+                {shown}
+                {detail && <span style={{ display: "block", fontWeight: 400, color: "#94a3b8" }}>{detail}</span>}
+              </span>
+            </div>
+          );
+        })
+      )}
+      {scatter && shared && <p style={{ margin: "4px 0 0", color: "#94a3b8" }}>{shared}</p>}
+    </div>
+  );
+}
 
 /** Histogram bins over numeric samples. */
 function histogram(data: number[], bins: number): { name: string; value: number }[] {
@@ -136,7 +216,7 @@ export function ChartCanvas({
     <ResponsiveContainer width="100%" height="100%">
       {kind === "funnel" ? (
         <FunnelChart margin={{ top: 8, right: 24, bottom: 8, left: 24 }}>
-          <Tooltip />
+          <Tooltip content={ChartTooltip} />
           <Funnel dataKey="value" data={data} isAnimationActive={false}>
             <LabelList position="right" dataKey="value" fill="#334155" stroke="none" style={{ fontSize: 11, fontWeight: 700 }} />
             {data.map((_, i) => (
@@ -160,14 +240,14 @@ export function ChartCanvas({
               <Cell key={i} fill={colors[i % colors.length]} />
             ))}
           </Pie>
-          <Tooltip />
+          <Tooltip content={ChartTooltip} />
         </PieChart>
       ) : kind === "radar" && extra?.groups && extra.seriesKeys ? (
         <RadarChart data={extra.groups} outerRadius="72%">
           <PolarGrid />
           <PolarAngleAxis dataKey="name" tick={{ fontSize: 11, fill: "#5b6b7c" }} />
           <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 9, fill: "#94a3b8" }} />
-          <Tooltip />
+          <Tooltip content={ChartTooltip} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           {extra.seriesKeys.map((s, i) => (
             <Radar key={s.key} name={s.label} dataKey={s.key} stroke={colors[i % colors.length]} fill={colors[i % colors.length]} fillOpacity={0.18} />
@@ -178,7 +258,7 @@ export function ChartCanvas({
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="name" tick={tickFont} interval={0} angle={extra.groups.length > 6 ? -18 : 0} height={extra.groups.length > 6 ? 60 : 30} />
           <YAxis tick={tickFont} width={44} allowDecimals={false} />
-          <Tooltip />
+          <Tooltip content={ChartTooltip} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           {extra.seriesKeys.map((s, i) => (
             <Bar key={s.key} dataKey={s.key} name={s.label} fill={colors[i % colors.length]} maxBarSize={36} />
@@ -189,7 +269,7 @@ export function ChartCanvas({
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="name" tick={tickFont} interval={0} angle={-18} height={70} />
           <YAxis tick={tickFont} width={44} domain={[0, 100]} unit="%" />
-          <Tooltip />
+          <Tooltip content={ChartTooltip} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           {extra.seriesKeys.map((s, i) => (
             <Bar key={s.key} dataKey={s.key} name={s.label} stackId="pct" fill={colors[i % colors.length]} maxBarSize={42} />
@@ -201,7 +281,7 @@ export function ChartCanvas({
           <XAxis dataKey="name" tick={tickFont} interval={0} angle={-18} height={70} />
           <YAxis yAxisId="left" tick={tickFont} width={44} allowDecimals={false} unit="%" />
           <YAxis yAxisId="right" orientation="right" tick={tickFont} width={40} domain={[0, 100]} unit="%" />
-          <Tooltip />
+          <Tooltip content={ChartTooltip} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           <Bar yAxisId="left" dataKey="value" name="% True" fill={colors[0]} maxBarSize={40} />
           <Line yAxisId="right" dataKey="cum" name="Cumulative %" stroke={colors[1] ?? colors[0]} strokeWidth={2} dot={{ r: 2 }} />
@@ -229,14 +309,14 @@ export function ChartCanvas({
               <Cell key={i} fill={colors[i % colors.length]} />
             ))}
           </Pie>
-          <Tooltip />
+          <Tooltip content={ChartTooltip} />
         </PieChart>
       ) : kind === "line" ? (
         <LineChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="name" tick={tickFont} interval="preserveStartEnd" />
           <YAxis tick={tickFont} width={44} allowDecimals={false} />
-          <Tooltip />
+          <Tooltip content={ChartTooltip} />
           <Line type="monotone" dataKey="value" name={title} stroke={colors[0]} strokeWidth={2} dot={{ r: 2 }} />
         </LineChart>
       ) : kind === "area" ? (
@@ -244,7 +324,7 @@ export function ChartCanvas({
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="name" tick={tickFont} interval="preserveStartEnd" />
           <YAxis tick={tickFont} width={44} allowDecimals={false} />
-          <Tooltip />
+          <Tooltip content={ChartTooltip} />
           <Area type="monotone" dataKey="value" name={title} fill={colors[0]} fillOpacity={0.25} stroke={colors[0]} strokeWidth={2} />
         </AreaChart>
       ) : kind === "table" ? (
@@ -273,7 +353,7 @@ export function ChartCanvas({
               <YAxis tick={tickFont} width={44} allowDecimals={false} />
             </>
           )}
-          <Tooltip />
+          <Tooltip content={ChartTooltip} />
           <Bar dataKey="value" name={title} radius={horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]} maxBarSize={42}>
             {data.map((_, i) => {
               const groups = extra?.barGroups;
@@ -316,6 +396,7 @@ function BoxPlot({ boxes, colors }: { boxes: { name: string; min: number; q1: nu
           const mx = left + scale(b.med);
           return (
             <g key={b.name}>
+              <title>{`${b.name}: min ${b.min}, Q1 ${b.q1}, median ${b.med}, Q3 ${b.q3}, max ${b.max} (n=${b.n})`}</title>
               <text x={left - 8} y={y + 14} textAnchor="end" fontSize={11} fontWeight={700} fill="#334155">
                 {b.name.length > 30 ? b.name.slice(0, 29) + "…" : b.name}
               </text>
@@ -335,7 +416,7 @@ function BoxPlot({ boxes, colors }: { boxes: { name: string; min: number; q1: nu
   );
 }
 
-function Gauges({ gauges, colors }: { gauges: { name: string; value: number; display: string }[]; colors: string[] }) {
+function Gauges({ gauges, colors }: { gauges: { name: string; value: number; display: string; detail?: string }[]; colors: string[] }) {
   if (gauges.length === 0) return <p className="muted small">No gauge data.</p>;
   return (
     <div style={{ display: "flex", gap: 24, alignItems: "flex-end", justifyContent: "center", height: "100%", flexWrap: "wrap" }}>
@@ -345,6 +426,7 @@ function Gauges({ gauges, colors }: { gauges: { name: string; value: number; dis
         return (
           <div key={g.name} style={{ textAlign: "center" }}>
             <svg width={170} height={100} viewBox="0 0 100 56">
+              <title>{g.detail ? `${g.name}: ${g.display} — ${g.detail}` : `${g.name}: ${g.display}`}</title>
               <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="#e2e8f0" strokeWidth={10} strokeLinecap="round" />
               <path
                 d="M 10 50 A 40 40 0 0 1 90 50"
@@ -362,6 +444,11 @@ function Gauges({ gauges, colors }: { gauges: { name: string; value: number; dis
             <p className="small" style={{ margin: "2px 0 0", fontWeight: 700, color: "#334155", maxWidth: 170 }}>
               {g.name}
             </p>
+            {g.detail && (
+              <p className="muted" style={{ margin: "0", fontSize: 10, maxWidth: 170 }}>
+                {g.detail}
+              </p>
+            )}
           </div>
         );
       })}
@@ -383,6 +470,7 @@ function Waffle({ waffle, colors, fallback }: { waffle?: { filled: number; total
         {Array.from({ length: 100 }, (_, i) => (
           <div
             key={i}
+            title={`${i < filledSquares ? waffle?.filledLabel ?? "Filled" : waffle?.restLabel ?? "Rest"} · ${filled} of ${total} (${Math.round(pct)}%)`}
             style={{
               width: size,
               height: size,
@@ -438,6 +526,7 @@ function Heatmap({ matrix, colors }: { matrix?: { rowTitle: string; colTitle: st
                   return (
                     <td
                       key={ci}
+                      title={`${r} · ${matrix.cols[ci]}: ${v} site(s)`}
                       style={{
                         padding: "8px 14px",
                         textAlign: "center",
