@@ -198,7 +198,13 @@ export interface ComparisonResult {
   columnsMissing: string[];
 }
 
-function mkSeries(points: SeriesPoint[], samples: number[] = []): IndicatorSeries {
+function mkSeries(
+  points: SeriesPoint[],
+  samples: number[] = [],
+  used: string[] = [],
+  missing: string[] = [],
+): IndicatorSeries {
+  const total = used.length + missing.length;
   return {
     points,
     samples,
@@ -206,7 +212,7 @@ function mkSeries(points: SeriesPoint[], samples: number[] = []): IndicatorSerie
     stats: {
       cardinality: points.length,
       dateSpanDays: 0,
-      missingRate: 0,
+      missingRate: total > 0 ? missing.length / total : 0,
       numericShape: "flat",
     },
   };
@@ -227,7 +233,7 @@ function mkResult(
 ): ComparisonResult {
   return {
     kind,
-    series: mkSeries(points, samples),
+    series: mkSeries(points, samples, used, missing),
     extra,
     insight: insight + missingNote(missing),
     columnsUsed: used,
