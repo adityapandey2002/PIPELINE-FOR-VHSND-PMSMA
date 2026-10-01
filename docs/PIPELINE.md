@@ -1,7 +1,7 @@
 # VHSND & PMSMA Pipeline — Codemap & Reference
 
-**Last updated:** 2026-09-28
-**Source of truth:** working tree at commit `898894f` (branch `main`) — every statement below was read from
+**Last updated:** 2026-10-02
+**Source of truth:** working tree at commit `e754df9` (branch `main`) — every statement below was read from
 source, from the test suite, or measured by executing the repo's own code. Anything that could **not**
 be verified is called out explicitly (see §6).
 
@@ -102,7 +102,7 @@ artifact can be served from a file share with no server.
 | Output | `output: "export"`, `distDir: "out"`, `trailingSlash`, `reactCompiler` | `next.config.ts:4-10` |
 | Path alias | `@/*` → `src/*` | `tsconfig.json:25-27`, `vitest.config.ts:10-14` |
 | Spreadsheet engine | `xlsx` from local vendored tarball `vendor/xlsx-0.20.3.tgz` | `package.json:29`, `src/workers/parseWorker.ts:31` |
-| Charts | `recharts` 3.10.1 + 4 hand-built SVG/DOM renderers | `src/components/ChartCanvas.tsx:4-31,128-133` |
+| Charts | `recharts` 3.10.1 + 4 hand-built SVG/DOM renderers, all fed one shared tooltip | `src/components/ChartCanvas.tsx:5-32,42,68-141,374-554` |
 | Schema version | `SCHEMA_VERSION = "2026.1"` | `src/schema/index.ts:4` |
 | Column registry | 253 `label,code` rows in `data/vhsnd-columns.csv` → generated `src/schema/columns-vhsnd.ts` | `scripts/gen-columns.mjs:3,65-82` |
 
@@ -256,23 +256,34 @@ read `presentColumns` instead of the values.
   < 50 % (`:87`).
 * **Cleaning / viz insights** — `computeCleaningInsights` (`insights.ts:103-124`),
   `computeVizInsights` (`insights.ts:139-168`).
-* **Indicators** — 21 definitions (`src/schema/indicators.ts:41-93`) evaluated by
-  `evaluateIndicator:109-241`, which switches on five `dataType`s — `time-series`, `categorical`,
-  `geospatial`, `numeric`, `numeric-distribution` (`indicators.ts:126-241`); the wider `DataType` union
+* **Indicators** — 21 definitions (`src/schema/indicators.ts:42-94`) evaluated by
+  `evaluateIndicator:123-276`, which switches on five `dataType`s — `time-series`, `categorical`,
+  `geospatial`, `numeric`, `numeric-distribution` (`indicators.ts:140-276`); the wider `DataType` union
   also declares `ordinal` and `numeric-categorical`, which no indicator uses
   (`src/contracts/indicator.ts:1-8`). Sensible fallbacks apply — date keys → any temporal-looking column →
-  ordinal index (`indicators.ts:136-154`). `suggestCharts:271-310` ranks chart kinds per data type.
+  ordinal index (`indicators.ts:150-158`). `suggestCharts:306-345` ranks chart kinds per data type.
+  **Boolean value fields** (`ANM1`, `ASHA1`, `C6`, `New`, … — checked through `schemaFieldType`,
+  `:107-114`) are not numbers: `coerceNumber(true)` is `null`, so before commit `e754df9` every such
+  indicator read as 100 % missing with a value of 0. They are counted through `coerceBoolean` instead —
+  the value is **Yes answers**, `missingRate` is `1 - answered/total` (`false` counts as an answer), and
+  the point detail reads `"15 Yes of 17 answered"` (`:236-270`). Every point also carries an optional
+  `unit` and `detail` (`:98-105`).
 * **Comparisons** — 21 entries in `COMPARISONS` across 6 `COMPARISON_CATEGORIES`
-  (`src/lib/comparisons.ts:259-266,276-1004`), each `compute(rows)` returning a
-  `ComparisonResult {kind, series, extra, insight, columnsUsed, columnsMissing}` (`:192-199`). They span
+  (`src/lib/comparisons.ts:303-310,320-1090`), each `compute(rows)` returning a
+  `ComparisonResult {kind, series, extra, insight, columnsUsed, columnsMissing}` (`:230-237`). They span
   14 chart kinds: `funnel, grouped-bar, bar-vertical, bar-horizontal, stacked-100, heatmap, box, gauge,
   pareto, donut, pie, scatter, waffle, radar`. Two different questions decide what happens next:
   `hasValues` (`:35-37`) still drives the maths (a blank column contributes no data), while
   `columnsMissing` is built from `inFile` (`:44-48`), which reads `presentColumns` off the first clean
   row and only falls back to values when a caller supplies none — so "Not in this file" names columns
   the file genuinely lacks, not columns it carries and left blank. Missing columns are listed in the
-  insight sentence (`missingNote:215-217`) and, in the UI, hold the chart back until the user opts in
+  insight sentence (`missingNote:259-261`) and, in the UI, hold the chart back until the user opts in
   (Stage 6).
+* **Hover detail behind the numbers.** A percentage is never shown bare: `pctPoint` / `pctDetail` /
+  `countPoint` / `meanDetail` / `pointsFromGroups` (`comparisons.ts:71-94,125-131`) attach `unit: "%"`
+  and a `detail` string (`"9 of 20 sites"`, `"45 % — 9 of 20 sites"`) to every series point, and
+  grouped/gauge/scatter stats carry `detail` (plus `detail:<dataKey>` for multi-series) —
+  `GaugeStat.detail` (`:192`), `ScatterStat.detail` (`:215`).
 
 ### Stage 6 — Visualise & chart capture
 
@@ -293,8 +304,16 @@ read `presentColumns` instead of the values.
 * The Analysis row labels the mode button from the registry — **"Comparison charts (21)"**, with a
   matching tooltip (`:266-272`) — instead of a hard-coded count.
 * `ChartCanvas` (`src/components/ChartCanvas.tsx`) renders recharts families plus four custom renderers
-  for `box/gauge/waffle/heatmap` (`CUSTOM_KINDS`, `:41,128-133`); an empty series yields a guided empty
-  state instead of a blank chart (`:89-109`).
+  for `box/gauge/waffle/heatmap` (`CUSTOM_KINDS`, `:42,208-213`); an empty series yields a guided empty
+  state instead of a blank chart (`:169-189`).
+* **Every chart shares one tooltip.** All ten recharts `<Tooltip />`s take `content={ChartTooltip}`
+  (`ChartCanvas.tsx:68-141,219-356`): a hand-styled box showing the label/heading, one row per series
+  (name, value with `unit`), then the `detail` line beneath it, resolved per series via
+  `detail:<dataKey>` when a chart carries several; scatter special-cases x/y, and a single-series
+  payload hides the redundant series name. The four custom renderers show the same information on hover:
+  BoxPlot rows get a `<title>` with min/Q1/median/Q3/max/n (`:376-417`), gauges print `detail` under the
+  name and expose it to `<title>` (`:419-457`), heatmap cells `title="row · col: v site(s)"` (`:496-554`),
+  and waffle squares a filled/total/pct `title` (`:459-494`).
 * **Add to report** (`:126-158`) rasterises the chart card with `html-to-image`'s `toPng`
   (`pixelRatio: 2`, white background, `:130-134`) and stores a `ChartConfig` — kind, indicator/comparison id, title,
   series, bins, `extra`, insight — plus the PNG blob (`:136-152`) via `chartStore.addChart`
@@ -347,7 +366,7 @@ first when no dataset is active (`DatasetPicker.tsx:22-72`).
 
 ### 4.3 Shared components
 
-`AppShell` (nav + hydration gate) · `ChartCanvas` (all 18 `ChartKind`s, `ChartCanvas.tsx:64-292`) ·
+`AppShell` (nav + hydration gate) · `ChartCanvas` (all 18 `ChartKind`s, `ChartCanvas.tsx:144-372`) ·
 `ColorPicker` (5 pastel swatches, multi-select) · `DatasetPicker` · `InsightPanel` (collapsible card
 wrapping `SummaryCard`s) · `RowDrawer` (decision form) · `SummaryCard` (number + tone).
 
@@ -381,7 +400,7 @@ node .\node_modules\typescript\bin\tsc --noEmit
 # 2. Lint (flat config, eslint 9) -> "ESLINT OK"
 node .\node_modules\eslint\bin\eslint.js .
 
-# 3. Unit tests          -> 17 files / 194 tests, all pass
+# 3. Unit tests          -> 17 files / 201 tests, all pass
 node .\node_modules\vitest\vitest.mjs run
 
 # 4. Static export       -> out/ , 6 routes (/, /_not-found, /ingest, /report, /review, /viz)
@@ -399,16 +418,16 @@ Equivalent npm scripts exist and are the documented interface (`package.json:5-1
 > `vitest.config.ts:8`) — no reporter flag is needed. `next build` regenerates the `AGENTS.md`
 > nextjs-agent-rules block; commit it with your work rather than deleting it.
 
-### 5.2 Test inventory (17 files, 194 tests, node environment)
+### 5.2 Test inventory (17 files, 201 tests, node environment)
 
 | File | Tests | Covers |
 |---|---:|---|
 | `tests/engine/validate.test.ts` | 36 | Rule behaviour incl. `MISSING_REQUIRED` being disabled (`tests/engine/validate.test.ts:129-131`) |
-| `tests/comparisons.test.ts` | 36 | The 21 comparisons, missing-column handling, and "absent from the file" vs "present but blank" (`presentColumns` → `inFile`) |
+| `tests/comparisons.test.ts` | 40 | The 21 comparisons, missing-column handling, "absent from the file" vs "present but blank" (`presentColumns` → `inFile`), and a hover-detail pass asserting every point/group/gauge carries a `detail` (`tests/comparisons.test.ts:391-456`) |
 | `tests/engine/coercers.test.ts` | 25 | Boolean/date/time/serial/sentinel coercion |
 | `tests/two-row-odk-export.test.ts` | 18 | 2-header (label + code) exports |
 | `tests/violation-identity.test.ts` | 11 | `violationKey` stability |
-| `tests/indicators.test.ts` | 9 | Indicator evaluation + suggestions |
+| `tests/indicators.test.ts` | 12 | Indicator evaluation + suggestions, plus the boolean fix: a boolean column counting Yes answers at `missingRate 0.25` (`"2 Yes of 3 answered"`), a fully-answered one at `0`, and every boolean `valueField` read as a count of Yes |
 | `tests/derive.test.ts` | 9 | Clean/dropped/pending derivation |
 | `tests/schema/headerNormalizer.test.ts` | 8 | Header resolution ladder |
 | `tests/transposed-import.test.ts` | 8 | Exports that list fields down column A: `detectTransposed` / `transposeAoa`, an ordinary sheet left alone, the repeated label row read as headers (`headerRows` 2 / `dataStart` 2), and a sideways workbook through `parsePayload` → validate → compare |
@@ -457,7 +476,7 @@ Regenerate fixtures with `node scripts/make-sample-data.cjs` (→ `vhsnd-sample.
 ### 6.1 RESOLVED — comparison charts: stale count (three quirks still open)
 
 **Status: RESOLVED (the count).** `COMPARISONS` has held **21** entries since `3dd1246` — the last one
-labelled "21. Good practice vs bad practice counts" (`src/lib/comparisons.ts:971-1003`) — but the mode
+labelled "21. Good practice vs bad practice counts" (`src/lib/comparisons.ts:1057-1089`) — but the mode
 button and its tooltip were hard-coded to 20, so the UI disagreed with the registry and with the
 dropdown that lists all 21. Commit `c88282e` replaced both strings with `COMPARISONS.length`
 (`src/app/viz/page.tsx:266-272`), so the button now reads **"Comparison charts (21)"** with a matching
@@ -468,19 +487,20 @@ carried the same stale number and was reworded to `the comparison registry` whil
 `tests/comparisons.test.ts` only exercises `compute()`, never the DOM):
 
 1. **Numbering no longer follows the category order.** #21 is filed under
-   `COMPARISON_CATEGORIES[1]` (`comparisons.ts:973`), so the "2 · Service & Infrastructure Readiness"
+   `COMPARISON_CATEGORIES[1]` (`comparisons.ts:1059`), so the "2 · Service & Infrastructure Readiness"
    optgroup lists 4, 5, 6, 7 **and 21**, while the dropdown's other categories run 1–3, 8–20
    (`viz/page.tsx:286-293`).
 2. **One comparison declares a kind its payload cannot drive.** `anc-pnc-bias` returns
-   `kind: "grouped-bar"` but supplies a **single** `seriesKeys` entry (`comparisons.ts:396-403`), whereas
+   `kind: "grouped-bar"` but supplies a **single** `seriesKeys` entry (`comparisons.ts:452-459`), whereas
    `ChartCanvas` only takes the grouped branch when `seriesKeys.length > 1`
-   (`ChartCanvas.tsx:176`) — it silently falls through to the default single-series bar chart over
+   (`ChartCanvas.tsx:256`) — it silently falls through to the default single-series bar chart over
    `series.points`, ignoring `extra.groups`. (The other grouped-bar comparison, `gdm-bottleneck`, passes
    two series keys and is fine.)
-3. **Comparison mode feeds stub statistics into the insight tiles.** `mkSeries` hard-codes
-   `missingRate: 0`, `dateSpanDays: 0`, `numericShape: "flat"`
-   (`comparisons.ts:201-213`), and `vizInsights` reads them (`viz/page.tsx:91-94,215-216`) — so in
-   comparison mode "Missing rate / Date span / Shape" are not measurements of the dataset.
+3. **Comparison mode still feeds two stub statistics into the insight tiles.** `mkSeries` computes
+   `missingRate` from `used`/`missing` columns since `5382fe0` (`comparisons.ts:239-257`), but still
+   hard-codes `dateSpanDays: 0` and `numericShape: "flat"`, and `vizInsights` reads them
+   (`viz/page.tsx:91-94,215-216`) — so in comparison mode "Date span / Shape" are not measurements of
+   the dataset (comparison mode's "Missing rate" is instead the share of schema columns the file lacks).
 
 **Not verified:** any specific rendering failure (blank canvas, crash, wrong chart) in a browser. If the
 symptom you are seeing differs from 1–3 above, it needs a reproducible case before it can be pinned to a
@@ -554,13 +574,13 @@ src/app/
   viz/page.tsx               indicator/comparison charts, capture            (473)
   report/page.tsx            PPTX/DOCX/CSV/audit exports, wipe               (244)
   globals.css, favicon.ico
-src/components/  AppShell(60) ChartCanvas(493) ColorPicker DatasetPicker(73)
+src/components/  AppShell(60) ChartCanvas(582) ColorPicker DatasetPicker(73)
                  InsightPanel(63) RowDrawer(306) SummaryCard(28)
 src/contracts/   chart.ts dataset.ts indicator.ts resolution.ts violation.ts
-src/lib/         comparisons.ts(1017) crypto.ts(95) derive.ts(90)
+src/lib/         comparisons.ts(1103) crypto.ts(95) derive.ts(90)
                  insights.ts(168) workers.ts(186) workerScope.ts(9)
                  storage/idb.ts(273)
-src/schema/      columns-vhsnd.ts(GENERATED,253 cols) dsl.ts index.ts indicators.ts(310)
+src/schema/      columns-vhsnd.ts(GENERATED,253 cols) dsl.ts index.ts indicators.ts(345)
                  engine/{accessors,cellCoercers,groupChildren,headerNormalizer,normalize,validate}.ts
                  versions/v2026-1.ts(675)
 src/stores/      chartStore.ts datasetStore.ts resolutionStore.ts workflowStore.ts
@@ -568,7 +588,7 @@ src/export/      csv.ts docxReporter.ts pptxReporter.ts reportContext.ts templat
 src/workers/     parseWorker.ts(98) validateWorker.ts
 ```
 
-### 7.2 Tests (`tests/`, 17 files / 194 tests)
+### 7.2 Tests (`tests/`, 17 files / 201 tests)
 
 See the table in §5.2. Layout: `tests/*.test.ts`, `tests/engine/*.test.ts`, `tests/schema/*.test.ts`.
 
@@ -615,9 +635,9 @@ See the table in §5.2. Layout: `tests/*.test.ts`, `tests/engine/*.test.ts`, `te
 | Distinct field-level codes | `INVALID_*`, `UNEXPECTED_*`, `OUT_OF_RANGE`, `SENTINEL_*`, `UNMAPPED_GROUP_OPTION`, `GROUP_OPTION_MISMATCH`, `RULE_EVALUATION_ERROR` |
 | Indicators | 21 |
 | Comparisons | 21 across 6 categories, 14 chart kinds |
-| Chart kinds supported by `ChartCanvas` | 18 (`KIND_LABEL`, `indicators.ts:249-268`) |
+| Chart kinds supported by `ChartCanvas` | 18 (`KIND_LABEL`, `indicators.ts:284-303`) |
 | App routes (static export) | 6 (`/`, `/_not-found`, `/ingest`, `/report`, `/review`, `/viz`) |
-| Test suite | 17 files / 194 tests, all passing as of 2026-09-28 |
-| Quality gates | tsc clean · eslint 9 clean · 17/194 tests pass · `next build` → `out/`, 6 routes · `check-offline` OK (as of 2026-09-28) |
+| Test suite | 17 files / 201 tests, all passing as of 2026-10-02 |
+| Quality gates | tsc clean · eslint 9 clean · 17/201 tests pass · `next build` → `out/`, 6 routes · `check-offline` OK (as of 2026-10-02) |
 | IDB databases | `vhsnd-pipeline` v2 (6 stores) + `pipeline-crypto` |
-| HEAD | `898894f` — "let the user point an unfamiliar column title at its field" |
+| HEAD | `e754df9` — "count Yes for boolean indicators and show the numbers behind every chart hover" |
