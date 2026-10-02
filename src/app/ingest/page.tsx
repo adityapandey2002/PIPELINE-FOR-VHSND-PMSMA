@@ -10,8 +10,10 @@ import { useDatasetStore } from "@/stores/datasetStore";
 import { useWorkflowStore } from "@/stores/workflowStore";
 import { VHSND_COLUMNS } from "@/schema/columns-vhsnd";
 import { computeDatasetInsights, type DatasetInsights } from "@/lib/insights";
+import { collapsedNotice } from "@/lib/ingestCopy";
 import { listDatasets, loadHeaderOverrides, saveHeaderOverrides } from "@/lib/storage/idb";
 import type { DatasetSummary } from "@/contracts/dataset";
+import type { CollapseCause } from "@/schema/engine/normalize";
 
 type Phase = "idle" | "reading" | "parsing" | "validating" | "done" | "error";
 
@@ -42,8 +44,7 @@ export default function IngestPage() {
     warnings: number;
     columnsRecognized: number;
     missingCritical: string[];
-    collapsedColumns: { label: string; keptCode: string; count: number }[];
-    headerRows: number;
+    collapsedColumns: { label: string; keptCode: string; count: number; cause: CollapseCause }[];
     transposed: boolean;
     presentColumns: string[];
   } | null>(null);
@@ -108,7 +109,6 @@ export default function IngestPage() {
           columnsRecognized,
           missingCritical,
           collapsedColumns: parsed.collapsedColumns,
-          headerRows: parsed.meta.headerRow,
           transposed: parsed.transposed === true,
           presentColumns: parsed.presentColumns,
         });
@@ -308,9 +308,7 @@ export default function IngestPage() {
               told apart
             </h4>
             <p className="small" style={{ marginBottom: 0 }}>
-              {summary.headerRows > 1
-                ? "This file already carries the form's second row of column codes, but these titles share one code in both rows, so the repeats cannot be matched to separate fields. Only the first column of each was read."
-                : "This file has a single header row, so repeated column titles cannot be matched to separate fields. Only the first column of each title was read. Re-export from the form with its second row of column codes to keep every column."}
+              {collapsedNotice(summary.collapsedColumns.map((c) => c.cause))}
             </p>
             <ul className="small muted" style={{ margin: "6px 0 0" }}>
               {summary.collapsedColumns.map((c) => (

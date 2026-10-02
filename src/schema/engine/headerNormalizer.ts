@@ -22,7 +22,7 @@ function normalizeKey(s: string): string {
 function fuzzyKey(s: string): string {
   return s
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -54,6 +54,7 @@ const HINDI_ALIASES: Record<string, string> = {
   "awh सहायका": "C4_E",
   "क्या u-win पोर्टल का उपयोग किया जा रहा है": "C5",
   "क्या यह सत्र u-win पर पंजीकृत है": "C6",
+  "क्या anm u-win पर पंजीकृत है": "C7",
   "क्या टीकाकरण के बाद e- vaccination प्रमाण पत्र बन रहे है": "C8",
   "क्या anmol app में सूचनाओं का संधारण किया जा रहा है?": "C9",
   "सत्र स्थल पर कौन- कौन से अन्य सदस्यों ने भाग लिया हैं ?": "C10",
@@ -249,21 +250,75 @@ function levenshtein(a: string, b: string): number {
   return dp[n];
 }
 
+/**
+ * Hindi function words. They recur in almost every title, so letting them score
+ * would let any two unrelated questions match each other; only content words
+ * may prove a title is the one we mean.
+ */
+const HINDI_STOPWORDS = new Set([
+  "का",
+  "की",
+  "के",
+  "को",
+  "कि",
+  "से",
+  "पर",
+  "में",
+  "और",
+  "भी",
+  "तो",
+  "है",
+  "हैं",
+  "यह",
+  "वह",
+  "इस",
+  "उस",
+  "क्या",
+  "ही",
+  "या",
+  "एवं",
+  "द्वारा",
+  "आदि",
+]);
+
+/** Which alphabet a stem belongs to; Devanagari and Latin must never be compared. */
+function stemScript(s: string): "devanagari" | "latin" | "numeric" {
+  if (/[\u0900-\u097F]/.test(s)) return "devanagari";
+  if (/\d/.test(s) && !/[A-Za-z]/.test(s)) return "numeric";
+  return "latin";
+}
+
+/**
+ * A one-edit distance only means "the same word, mistyped" when the two stems
+ * are long enough to be words, share an alphabet, and are not a number: a
+ * single consonant is one edit from a digit, and "6" is one edit from "5",
+ * which is how a stray Hindi title landed on a numeric-labelled field.
+ */
+function isNearPair(hs: string, cs: string): boolean {
+  if (hs.length < 2 || cs.length < 2) return false;
+  if (stemScript(hs) !== stemScript(cs)) return false;
+  if (/\d/.test(hs) || /\d/.test(cs)) return false;
+  return levenshtein(hs, cs) <= 1;
+}
+
 function nearWordMatch(header: string, candidates: LabelCandidate[]): string | undefined {
   const headerWords = fuzzyKey(header).split(" ").filter(Boolean);
   if (headerWords.length === 0) return undefined;
-  const headerStems = headerWords.map(stemWord);
+  const headerStems = headerWords.map(stemWord).filter((w) => !HINDI_STOPWORDS.has(w));
+  if (headerStems.length === 0) return undefined;
   let best: LabelCandidate | undefined;
   let bestScore = -1;
   let ambiguous = false;
   for (const candidate of candidates) {
-    const candidateStems = candidate.words.map(stemWord);
+    const candidateStems = candidate.words
+      .map(stemWord)
+      .filter((w) => !HINDI_STOPWORDS.has(w));
     let score = 0;
     for (const hs of headerStems) {
       for (const cs of candidateStems) {
         if (hs === cs) {
           score += 2;
-        } else if (levenshtein(hs, cs) <= 1) {
+        } else if (isNearPair(hs, cs)) {
           score += 1;
         }
       }

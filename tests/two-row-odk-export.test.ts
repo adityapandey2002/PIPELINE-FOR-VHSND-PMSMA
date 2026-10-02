@@ -134,7 +134,12 @@ describe("two-row ODK export (DATA_EX_SHAPE.csv)", () => {
       header.normalize,
     );
     expect(sheet.collapsedColumns).toEqual([
-      { label: "SubmissionDate", keptCode: "SubmissionDate", count: 2 },
+      {
+        label: "SubmissionDate",
+        keptCode: "SubmissionDate",
+        count: 2,
+        cause: "sheet-code",
+      },
     ]);
     expect(sheet.rows[0].values.SubmissionDate).toBe("2026-01-01");
   });
@@ -158,7 +163,7 @@ describe("two-row ODK export (DATA_EX_SHAPE.csv)", () => {
       header.normalize,
     );
     expect(collapsed.collapsedColumns).toEqual([
-      { label: "Others (Specify)", keptCode: "A2_SP", count: 3 },
+      { label: "Others (Specify)", keptCode: "A2_SP", count: 3, cause: "resolved-title" },
     ]);
     expect(collapsed.meta.headerRow).toBe(1);
     expect(collapsed.rows[0].values.A2_SP).toBe("alpha");

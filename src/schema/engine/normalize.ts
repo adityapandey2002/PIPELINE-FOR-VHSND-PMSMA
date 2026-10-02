@@ -16,6 +16,16 @@ import {
   isMissingToken,
 } from "./cellCoercers";
 
+/**
+ * Where a column's code came from. The screen has to tell "the file itself
+ * repeats this code" apart from "we resolved two titles onto one code", because
+ * only the first of those is the export's doing.
+ */
+export type HeaderCodeSource = "sheet" | "titles" | "override";
+
+/** Why a group of columns could not be told apart. */
+export type CollapseCause = "sheet-code" | "resolved-title";
+
 export interface CollapsedColumn {
   /** The label that resolved ambiguously. */
   label: string;
@@ -23,6 +33,8 @@ export interface CollapsedColumn {
   keptCode: string;
   /** How many columns carried this same label. */
   count: number;
+  /** Whether the shared code was read from the file or derived from titles. */
+  cause: CollapseCause;
 }
 
 export interface ParsedSheet {
@@ -38,6 +50,8 @@ export interface ParsedSheet {
    * "Others (Specify)" columns) or a code repeated in the form's own code row
    * (the export's trailing SubmissionDate). Only repeats whose data differs
    * from the column kept are listed, so an exact copy raises no warning.
+   * `cause` says which of the two it was, so the screen never blames the file
+   * for a code we resolved ourselves.
    */
   collapsedColumns: CollapsedColumn[];
   meta: SourceMeta;
@@ -255,7 +269,13 @@ export interface HeaderLayout {
   codes: string[];
   /** Human labels for display; same length as `codes`. */
   labels: string[];
-  /** Number of header rows consumed (1 or 2). */
+  /**
+   * Where each entry of `codes` came from: read from the file's own code row,
+   * derived from a title by the resolution ladder, or rewritten by the user's
+   * mapping. Same length as `codes`.
+   */
+  codeSource: HeaderCodeSource[];
+  /** Number of header rows consumed (1, 2 or 3). */
   headerRows: number;
   /** 0-based index of the first data row. */
   dataStart: number;
@@ -263,6 +283,13 @@ export interface HeaderLayout {
 
 /** Fraction of a row's cells that must be known codes to accept it as a code row. */
 const CODE_ROW_THRESHOLD = 0.9;
+
+/** How far below the first row to keep looking for the form's code row. */
+const CODE_ROW_SCAN_DEPTH = 3;
+
+function cellText(v: unknown): string {
+  return v === null || v === undefined ? "" : String(v);
+}
 
 /** Minimum height before a sheet is even considered sideways. */
 const TRANSPOSE_MIN_ROWS = 30;
@@ -317,33 +344,55 @@ export function detectTransposed(
 }
 
 /**
- * Locate the header block. Prefers a code row (2 headers) and falls back to a
- * single label row, which is resolved through the header normalizer.
+ * Locate the header block. Prefers a code row and falls back to a single label
+ * row, which is resolved through the header normalizer.
+ *
+ * The code row is not always the second row: an export may carry a banner, or
+ * two translated label rows, above it. Scanning for it is what keeps such a
+ * file from being read by title -- where repeated titles collapse onto one
+ * field and near-miss titles land on the wrong one.
  */
 export function detectHeaderLayout(
   aoa: unknown[][],
   known: Set<string>,
   resolveLabel: (label: string) => string,
 ): HeaderLayout {
-  const first = aoa[0] ?? [];
-  const labels = first.map((c) => (c === null || c === undefined ? "" : String(c)));
+  const knownByUpper = new Map<string, string>();
+  for (const code of known) {
+    const upper = code.toUpperCase();
+    if (!knownByUpper.has(upper)) knownByUpper.set(upper, code);
+  }
+  /** Canonical code for a cell, matched without regard to case; else its text. */
+  const toCode = (cell: string): string => {
+    const trimmed = cell.trim();
+    if (trimmed === "") return "";
+    return knownByUpper.get(trimmed.toUpperCase()) ?? trimmed;
+  };
 
-  const candidate = (aoa[1] ?? []).map((c) => (c === null || c === undefined ? "" : String(c)));
-  const nonEmpty = candidate.filter((c) => c.trim() !== "");
-  const knownHits = nonEmpty.filter((c) => known.has(c.trim())).length;
-  const looksLikeCodeRow =
-    nonEmpty.length > 0 && knownHits / nonEmpty.length >= CODE_ROW_THRESHOLD;
+  const labels = (aoa[0] ?? []).map(cellText);
 
-  if (looksLikeCodeRow) {
-    return { codes: candidate, labels, headerRows: 2, dataStart: 2 };
+  for (let r = 1; r <= CODE_ROW_SCAN_DEPTH && r < aoa.length; r++) {
+    const candidate = (aoa[r] ?? []).map(cellText);
+    const nonEmpty = candidate.filter((c) => c.trim() !== "");
+    if (nonEmpty.length === 0) continue;
+    const knownHits = nonEmpty.filter((c) => knownByUpper.has(c.trim().toUpperCase())).length;
+    if (knownHits / nonEmpty.length < CODE_ROW_THRESHOLD) continue;
+    return {
+      codes: candidate.map(toCode),
+      labels: (aoa[r - 1] ?? []).map(cellText),
+      codeSource: candidate.map((): HeaderCodeSource => "sheet"),
+      headerRows: r + 1,
+      dataStart: r + 1,
+    };
   }
 
   // A flipped sheet carries the field titles twice (the title column and the
   // duplicate beside it), so its second row is headers, not the first record.
-  if (isDuplicateLabelRow(labels, candidate, resolveLabel)) {
+  if (isDuplicateLabelRow(labels, (aoa[1] ?? []).map(cellText), resolveLabel)) {
     return {
       codes: labels.map((l) => (l.trim() === "" ? "" : resolveLabel(l))),
       labels,
+      codeSource: labels.map((): HeaderCodeSource => "titles"),
       headerRows: 2,
       dataStart: 2,
     };
@@ -352,6 +401,7 @@ export function detectHeaderLayout(
   return {
     codes: labels.map((l) => (l.trim() === "" ? "" : resolveLabel(l))),
     labels,
+    codeSource: labels.map((): HeaderCodeSource => "titles"),
     headerRows: 1,
     dataStart: 1,
   };
@@ -413,7 +463,10 @@ function applyHeaderOverrides(
     const code = (layout.codes[i] ?? "").trim();
     const label = (layout.labels[i] ?? "").trim();
     const target = overrides[code] ?? (label === "" ? undefined : overrides[label]);
-    if (target) layout.codes[i] = target;
+    if (target) {
+      layout.codes[i] = target;
+      layout.codeSource[i] = "override";
+    }
   }
 }
 
@@ -469,6 +522,18 @@ export function normalizeAoa(
     else collapsed.set(label, { label, keptCode: c, count: 2 });
   });
 
+  // A group counts as the export's own doing only when every column in it read
+  // its code from the file. One title-derived code and the screen has to admit
+  // we are the ones who put those columns together.
+  const causeOf = (code: string): CollapseCause =>
+    layout.codes.every((c, i) => c.trim() !== code || layout.codeSource[i] === "sheet")
+      ? "sheet-code"
+      : "resolved-title";
+  const collapsedColumns: CollapsedColumn[] = [...collapsed.values()].map((entry) => ({
+    ...entry,
+    cause: causeOf(entry.keptCode),
+  }));
+
   const headerMap: Record<string, string> = {};
   const presentColumns: string[] = [];
   for (const [code, index] of firstIndexFor) {
@@ -520,7 +585,7 @@ export function normalizeAoa(
     skippedRows: skipped,
     headerMap,
     presentColumns,
-    collapsedColumns: [...collapsed.values()],
+    collapsedColumns,
     ...(transposed ? { transposed: true } : {}),
     ...(unmapped.length > 0 ? { unmappedHeaders: unmapped } : {}),
     meta: {

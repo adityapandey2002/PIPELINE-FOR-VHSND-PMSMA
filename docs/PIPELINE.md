@@ -1,7 +1,7 @@
 # VHSND & PMSMA Pipeline — Codemap & Reference
 
 **Last updated:** 2026-10-02
-**Source of truth:** working tree at commit `e754df9` (branch `main`) — every statement below was read from
+**Source of truth:** working tree at commit `f5a0324` (branch `main`) — every statement below was read from
 source, from the test suite, or measured by executing the repo's own code. Anything that could **not**
 be verified is called out explicitly (see §6).
 
@@ -18,7 +18,7 @@ ODK/Excel export into the browser and the app:
 
 1. **Ingest** — parses `.xlsx / .xls / .ods / .csv` locally, maps headers to the 253-column VHSND
    registry, flips exports whose fields run down column A, and lets the user point unmatched titles at
-   a field (`src/app/ingest/page.tsx:51-190`).
+   a field (`src/app/ingest/page.tsx:52-190`).
 2. **Review & clean** — runs a contradiction engine and lets the user keep / drop / override each flagged
    row with a written justification (`src/app/review/page.tsx`, `src/components/RowDrawer.tsx`).
 3. **Visualise** — evaluates 21 indicators and 21 comparison charts, captures chart images
@@ -154,32 +154,48 @@ artifact can be served from a file share with no server.
    codes in **under** 60 % of cases (`:316`), i.e. that row looks like values, not titles. `transposeAoa`
    (`:275-288`) then swaps rows and columns, and the flip is recorded as
    `transposed: true` on `ParsedSheet` (`:49`, returned at `:503`).
-5. `detectHeaderLayout` (`normalize.ts:323-358`) decides the header shape: row 2 counts as a **code row**
-   when ≥ 90 % of its non-empty cells are known codes (`CODE_ROW_THRESHOLD`, `:265`), giving a 2-header
-   layout (`:337-339`); otherwise, if row 2 simply **repeats row 1's titles** — `isDuplicateLabelRow`
-   (`:361-380`) needs ≥ 90 % agreement, as titles or as resolved codes — the pair is read as headers
-   (`headerRows: 2`, `dataStart: 2`, `:341-350`), which is what a flipped export's duplicated label
-   column looks like; the fallback is a **single label row** whose labels are resolved through the
-   header normalizer (`headerRows: 1`, `:352-357`).
-6. `buildHeaderMap().normalize` (`src/schema/engine/headerNormalizer.ts:75-137`) resolves a header in
-   this order: exact code/label (`:109-110`), a code token embedded anywhere — e.g. `"8. B8"`
-   (`:31-32,111-112`), the label with a leading numbering stripped (`:113-117`), then a fuzzy
-   Dice/containment match with ≥ 3 header words, ≥ 2 shared words and score ≥ 0.6, rejected on ties
-   (`:34-36,44-72`). `applyHeaderOverrides` (`normalize.ts:387-398`) runs on the layout immediately
-   after detection (`:417`) and rewrites a column's code whenever the map holds that column's label —
-   or its own code — as a key, so a title the schema does not know becomes the field the user chose.
-7. `normalizeAoa` (`normalize.ts:407-513`) keys columns by code, keeps the **first**
+5. `detectHeaderLayout` (`src/schema/engine/normalize.ts:355-408`) decides the header shape. It first
+   **scans rows 1–3 for the form's code row** (`CODE_ROW_SCAN_DEPTH`, `:288`) — a row qualifies when
+   ≥ 90 % of its non-empty cells are known codes, matched case-insensitively (`CODE_ROW_THRESHOLD`,
+   `:285`) — giving an `n + 1`-header layout with `codeSource: "sheet"` on every column (`:383`). That
+   is what a **three-row export** (numbered labels, labels again, then codes) needs: only the third row
+   identifies a column, so reading it as data both invents a bogus submission and forces every column
+   through title resolution. With no code row found, if row 2 simply **repeats row 1's titles** —
+   `isDuplicateLabelRow` (`:411-430`, called at `:391`) needs ≥ 90 % agreement, as titles or as
+   resolved codes — the pair is read as headers (`headerRows: 2`, `dataStart: 2`, `:391-401`), which is
+   what a flipped export's duplicated label column looks like; the fallback is a **single label row**
+   whose labels are resolved through the header normalizer (`headerRows: 1`, `:402-409`). Both
+   fallbacks record `codeSource: "titles"`.
+6. `buildHeaderMap().normalize` resolves a header through `resolve` (`src/schema/engine/headerNormalizer.ts:419-437`)
+   in this order: exact code/label (`:420-421`), a code token embedded anywhere — e.g. `"8. B8"`
+   (`CODE_TOKEN:406`, `codeTokenIn:409-416`), the label with a leading numbering stripped
+   (`:424-428`), then a fuzzy Dice/containment match with ≥ 3 header words, ≥ 2 shared words and
+   score ≥ 0.6, rejected on ties (`FUZZY_*:30-32`, `fuzzyLabelMatch:343-371`), and finally
+   `nearWordMatch` (`:304-341`), which needs score ≥ 4 (`:334`).
+   `nearWordMatch` is deliberately narrow, because its one-edit branch used to be a sink: a Devanagari
+   title is one edit from a digit once its combining marks are gone, so stray Hindi questions all read
+   as `H13` (the only label with two standalone digits). `fuzzyKey` now **keeps `\p{M}`** (`:22-28`),
+   Hindi function words score nothing (`HINDI_STOPWORDS:258-283`, applied at `:307,313-315`), and
+   `isNearPair` (`:297-302`) requires both stems ≥ 2 characters (`:298`), the **same alphabet**
+   (`stemScript:285-289`, called at `:299`) and no digit anywhere (`:300`) — digits must match exactly.
+   `applyHeaderOverrides` (`normalize.ts:457-471`) runs on the layout immediately after detection
+   (`:491`) and rewrites a column's code whenever the map holds that column's label — or its own code —
+   as a key, marking that column `codeSource: "override"` (`:466-470`), so a title the schema does not
+   know becomes the field the user chose.
+7. `normalizeAoa` (`normalize.ts:480-599`) keys columns by code, keeps the **first**
    occurrence of a repeated code, records genuinely indistinguishable duplicates in `collapsedColumns`
-   (`:434-449`) — exact copies are silent (`:442-444`) — coerces every cell through
-   `coerceFieldValue` (`:74-116`), drops unreadable / "no answer" cells (`keepCell`, `:127-131`), skips
-   wholly empty rows (`:490-493`) and returns `presentColumns` + `meta.headerRow`. It also collects
-   `unmappedHeaders` — titles the schema could not place, in sheet order and without repeats
-   (`:458-469`, returned at `:504`) — while their values stay in the sheet under the title itself.
+   (`:508-535`) — exact copies are silent (`:518`) — and tags each group with a `cause`:
+   `sheet-code` only when **every** column in it read its code from the file, otherwise
+   `resolved-title` (`causeOf`, `:528-531`, applied at `:532-535`). It coerces every cell through
+   `coerceFieldValue` (`:88-124`), drops unreadable / "no answer" cells (`keepCell`, `:141-144`), skips
+   wholly empty rows (`:576-579`) and returns `presentColumns` + `meta.headerRow` (`:595`). It also
+   collects `unmappedHeaders` — titles the schema could not place, in sheet order and without repeats
+   (`:546-555`, returned at `:590`) — while their values stay in the sheet under the title itself.
 8. `createDataset` (`src/stores/datasetStore.ts:40-58`) mints a **new `crypto.randomUUID()`** id
    (`:42`), attaches `schemaVersion` + `schemaHash`, and encrypts the snapshot into IDB
    (`idb.ts:89-91`). The ingest screen remembers the dataset *it* created and deletes it when the file
-   is read again, so one file does not pile up as several copies (`ingest/page.tsx:85-86,130-132`).
-9. `runValidate` then stores the validation cache (`ingest/page.tsx:87-98`), the page computes
+   is read again, so one file does not pile up as several copies (`ingest/page.tsx:86-87,130-132`).
+9. `runValidate` then stores the validation cache (`ingest/page.tsx:88-99`), the page computes
    `columnsRecognized` / `missingCritical` (`:99-103`) and asks whether this file was imported before
    (`:119-129`, card at `:278-302`) — decisions are per import, they never follow a re-import.
 10. **Post-import cards.** Three notices can follow the success card (`:234-258`):
@@ -189,10 +205,14 @@ artifact can be served from a file share with no server.
       with **"Swap rows and columns, then read again"** (`rereadOtherWay`, `:171-180`). This card is
       `--info`; the warning-coloured cards use `--warning` / `--warning-soft` (`globals.css:14-15`) —
       there is no `--warn` token in the stylesheet.
-    * **Collapsed columns** (`:304-324`) — repeated titles that could not be told apart.
-    * **Unmatched titles** (`:326-381`) — one row per title in `unmappedHeaders`, each with a `<select>`
-      of all 253 VHSND columns (`code — label`, codes already present in the file disabled, `:359-367`)
-      plus a "Leave it out" default, and **"Match these and read again"** (`:372-379`). The choice is
+    * **Collapsed columns** (`:304-322`) — repeated titles that could not be told apart. The paragraph
+      under the heading comes from `collapsedNotice` (`src/lib/ingestCopy.ts:10-24`), keyed on each
+      group's `cause` (`:311`), so the screen blames the export only when the file itself repeats a
+      code it owns and says "resolved onto the same field" when the merge was ours. The old copy chose
+      its wording from `headerRows` alone and therefore blamed the file either way.
+    * **Unmatched titles** (`:324-379`) — one row per title in `unmappedHeaders`, each with a `<select>`
+      of all 253 VHSND columns (`code — label`, codes already present in the file disabled, `:357-365`)
+      plus a "Leave it out" default, and **"Match these and read again"** (`:370-377`). The choice is
       saved against the file name — encrypted, in the `ui` store under `hdr:<fileName>`
       (`saveHeaderOverrides`, `idb.ts:217-222`; `loadHeaderOverrides`, `:224-228`), wiped by the privacy
       erase (`:260-273`) — and applied on the next read (`applyHeaderMapping`, `ingest/page.tsx:182-190`).
@@ -217,7 +237,7 @@ artifact can be served from a file share with no server.
    date rules then simply do not apply.
 
 The reference date is passed as `refDate: null` from the UI so the engine computes it
-(`ingest/page.tsx:90`, `review/page.tsx:84`).
+(`ingest/page.tsx:91`, `review/page.tsx:84`).
 
 ### Stage 3 — Review & resolution
 
@@ -359,7 +379,7 @@ first when no dataset is active (`DatasetPicker.tsx:22-72`).
 
 | Page | Key UI affordances (line) |
 |---|---|
-| Ingest | extension guard `:146-151`; progress phases `:16,221-226`; success card `:234-258`; "columns recognised / missing critical" `:238-248`; sideways-orientation card with manual override `:260-276`; duplicate-import card `:278-302`; "columns could not be told apart" card `:304-324`; unmatched-title card with per-title `<select>` over all 253 columns and "Match these and read again" `:326-381`; insights panel with top-fill table and sparse toggle (20 ↔ all) `:384-465` |
+| Ingest | extension guard `:146-151`; progress phases `:18,221-226`; success card `:234-258`; "columns recognised / missing critical" `:238-248`; sideways-orientation card with manual override `:260-276`; duplicate-import card `:278-302`; "columns could not be told apart" card `:304-322`; unmatched-title card with per-title `<select>` over all 253 columns and "Match these and read again" `:324-379`; insights panel with top-fill table and sparse toggle (20 ↔ all) `:382-463` |
 | Review | summary cards `:163-169`; insights (category badges, column coverage) `:172-215`; unresolved-error banner `:217-226`; severity filter chips `:228-240`; violation table `:248-291`; sticky `RowDrawer` `:295-302`; audit log `:304-332`; "Re-run validation" `:77-96` |
 | Viz | insights (11 tiles + numeric summary/shape) `:205-251`; mode buttons `:259-273` ("Comparison charts (21)"); indicator/comparison selects `:274-294`; description + recommendations + chart-type readout with the "Not in this file" chip `:297-327`; palette `:329-331`; withheld "Cannot show this in full" card / chart card + "Partial view" line + insight box `:333-411`; Add-to-report (disabled while withheld) `:413-421`; saved chart grid with remove `:425-473` |
 | Report | blocking banner `:180-191`; download buttons `:197-208`; stats list `:213-220`; "About / Privacy / Erase" `:224-241` |
@@ -400,7 +420,7 @@ node .\node_modules\typescript\bin\tsc --noEmit
 # 2. Lint (flat config, eslint 9) -> "ESLINT OK"
 node .\node_modules\eslint\bin\eslint.js .
 
-# 3. Unit tests          -> 17 files / 201 tests, all pass
+# 3. Unit tests          -> 19 files / 212 tests, all pass
 node .\node_modules\vitest\vitest.mjs run
 
 # 4. Static export       -> out/ , 6 routes (/, /_not-found, /ingest, /report, /review, /viz)
@@ -418,7 +438,7 @@ Equivalent npm scripts exist and are the documented interface (`package.json:5-1
 > `vitest.config.ts:8`) — no reporter flag is needed. `next build` regenerates the `AGENTS.md`
 > nextjs-agent-rules block; commit it with your work rather than deleting it.
 
-### 5.2 Test inventory (17 files, 201 tests, node environment)
+### 5.2 Test inventory (19 files, 212 tests, node environment)
 
 | File | Tests | Covers |
 |---|---:|---|
@@ -429,7 +449,9 @@ Equivalent npm scripts exist and are the documented interface (`package.json:5-1
 | `tests/violation-identity.test.ts` | 11 | `violationKey` stability |
 | `tests/indicators.test.ts` | 12 | Indicator evaluation + suggestions, plus the boolean fix: a boolean column counting Yes answers at `missingRate 0.25` (`"2 Yes of 3 answered"`), a fully-answered one at `0`, and every boolean `valueField` read as a count of Yes |
 | `tests/derive.test.ts` | 9 | Clean/dropped/pending derivation |
-| `tests/schema/headerNormalizer.test.ts` | 8 | Header resolution ladder |
+| `tests/schema/headerNormalizer.test.ts` | 11 | Header resolution ladder, plus the `H13` sink: stray Hindi titles must not read as `H13`, the form's own Hindi/English nutrition titles still must, and `क्या ANM U-WIN पर पंजीकृत है` → `C7` |
+| `tests/three-row-header.test.ts` | 4 | The code-row scan: three header rows give `headerRows: 3` / `dataStart: 3` / `codeSource: "sheet"`, the code row is not read as data, all 11 `*_SP` columns stay distinct with no collapse, and a plain two-row export is unchanged |
+| `tests/ingest-copy.test.ts` | 4 | `collapsedNotice` wording per `cause`, and silence when there is nothing to explain |
 | `tests/transposed-import.test.ts` | 8 | Exports that list fields down column A: `detectTransposed` / `transposeAoa`, an ordinary sheet left alone, the repeated label row read as headers (`headerRows` 2 / `dataStart` 2), and a sideways workbook through `parsePayload` → validate → compare |
 | `tests/schema/columns.test.ts` | 7 | 253-column registry integrity |
 | `tests/insights.test.ts` | 7 | Dataset/cleaning/viz insight counts |
@@ -454,13 +476,18 @@ outside the repo (no source file was touched):
 | `sample-data/DATA_EX_SHAPE.csv` | two-row (`headerRow: 2`) | 3 | 251 of 253 (`G1_D`, `remarks` absent) | 0 violations |
 | `sample-data/vhsnd-sample.xlsx` | single code row (`headerRow: 1`) | 160 | 252 of 253 (`G1_D` absent) | 320 errors / 3146 warnings / 307 infos across 26 distinct codes |
 
-Two further exports supplied for measurement — **not stored in this repo** — read through the same
+Three further exports supplied for measurement — **not stored in this repo** — read through the same
 harness today:
 
 | Export | Sheet | Read as | Result |
 |---|---|---|---|
 | `DATA_EXAMPLE.csv` | 252 × 7, fields down column A | flipped (`transposed: true`), **5 rows**, `headerRow: 2` | **20 of 21 comparisons full** — only `C11_1` is absent from that file |
-| `DATASET.xlsx` | 24 × 252 | upright | **21 of 21 full**, 0 errors, 0 warnings |
+| `DATASET.xlsx` | 24 × 252 | upright, `headerRow: 2` | **21 of 21 full**, 0 errors, 0 warnings |
+| `VHSND_DATASET.xlsx` | 696 × 252, three header rows (Hindi labels / English labels / codes) | `headerRow: 3`, **693 rows** | **252 of 253 recognised** (was 210 before the code-row scan), `collapsedColumns` empty (was 27 groups), `unmappedHeaders` absent (was 42), **21 of 21 comparisons full** |
+
+The `VHSND_DATASET.xlsx` row is the regression that motivated the code-row scan: only row 3 of its
+header carries codes, and reading rows 1–2 as labels instead collapsed the 11 `*_SP` columns, sent
+stray Hindi titles to `H13`, and turned the code row itself into a 694th data row.
 
 The `DATASET_1.xlsx` partials are partial because those columns really are not in the file, and its
 5 unmatched titles are what the ingest mapping card exists for — the mapping card is §3 Stage 1, the
@@ -512,8 +539,8 @@ line.
 |---|---|
 | `MISSING_REQUIRED` is **disabled** — `required: true` on `B8` (`v2026-1.ts:178`) is never enforced | only referenced in tests: `tests/sample-data.test.ts:63`, `tests/engine/validate.test.ts:129-131`; no producer in `src/schema/engine/validate.ts` |
 | **PMSMA is not implemented** — only `vhsnd` | `src/schema/index.ts:5`; `src/contracts/dataset.ts:13` declares the type only |
-| **Re-import strands decisions** — a new import always mints a new dataset id | `src/stores/datasetStore.ts:42`; surfaced to the user at `ingest/page.tsx:278-302`. A re-read *on the ingest screen* now deletes the dataset that screen created earlier (`ingest/page.tsx:85-86,132`), so the pile-up only happens across separate visits |
-| Header collapse on single-header files — repeated titles read as one column | `normalize.ts:434-449`, warning card `ingest/page.tsx:304-324` |
+| **Re-import strands decisions** — a new import always mints a new dataset id | `src/stores/datasetStore.ts:42`; surfaced to the user at `ingest/page.tsx:278-302`. A re-read *on the ingest screen* now deletes the dataset that screen created earlier (`ingest/page.tsx:86-87,132`), so the pile-up only happens across separate visits |
+| Header collapse on single-header files — repeated titles read as one column | `normalize.ts:508-535`, warning card `ingest/page.tsx:304-322`. Its `cause` now says whether the shared code came from the file's own code row (`sheet-code`) or from our title resolution (`resolved-title`), and the card copy follows it |
 | `zod` is a declared dependency but is never imported anywhere in `src/`, `tests/` or `scripts/` | grep: only `package.json:30` + lockfile (also a transitive of `docx-templates`) |
 
 ### 6.3 Partial-export "silence" (measured, and a real risk)
@@ -521,7 +548,7 @@ line.
 With a label-headed file such as `DATASET_1.xlsx` the parser recognises only **86 of 253** columns and
 `SubmissionDate`/`B8` are missing, so `referenceDate` returns `null` (`validate.ts:32-39`) and the whole
 cross-field rule set reports **zero findings** while the UI still says "0 errors". The UI does surface
-`missingCritical` (`ingest/page.tsx:99-103,244-248`) and the coverage copy
+`missingCritical` (`ingest/page.tsx:100-104,244-248`) and the coverage copy
 (`review/page.tsx:208-211`), but nothing escalates "no findings because the inputs are absent" — the
 rule engine stays silent by design (Stage 2), and the review banner only counts unresolved errors.
 
@@ -569,7 +596,7 @@ Parenthesised numbers are total lines in the file (blank lines included).
 src/app/
   layout.tsx                 root layout, metadata, CSP
   page.tsx                   landing + local dataset list                    (148)
-  ingest/page.tsx            drop zone, orientation, header mapping, insights (468)
+  ingest/page.tsx            drop zone, orientation, header mapping, insights (466)
   review/page.tsx            violations table, filters, audit log            (335)
   viz/page.tsx               indicator/comparison charts, capture            (473)
   report/page.tsx            PPTX/DOCX/CSV/audit exports, wipe               (244)
@@ -578,7 +605,7 @@ src/components/  AppShell(60) ChartCanvas(582) ColorPicker DatasetPicker(73)
                  InsightPanel(63) RowDrawer(306) SummaryCard(28)
 src/contracts/   chart.ts dataset.ts indicator.ts resolution.ts violation.ts
 src/lib/         comparisons.ts(1103) crypto.ts(95) derive.ts(90)
-                 insights.ts(168) workers.ts(186) workerScope.ts(9)
+                 ingestCopy.ts(24) insights.ts(168) workers.ts(186) workerScope.ts(9)
                  storage/idb.ts(273)
 src/schema/      columns-vhsnd.ts(GENERATED,253 cols) dsl.ts index.ts indicators.ts(345)
                  engine/{accessors,cellCoercers,groupChildren,headerNormalizer,normalize,validate}.ts
@@ -588,7 +615,7 @@ src/export/      csv.ts docxReporter.ts pptxReporter.ts reportContext.ts templat
 src/workers/     parseWorker.ts(98) validateWorker.ts
 ```
 
-### 7.2 Tests (`tests/`, 17 files / 201 tests)
+### 7.2 Tests (`tests/`, 19 files / 212 tests)
 
 See the table in §5.2. Layout: `tests/*.test.ts`, `tests/engine/*.test.ts`, `tests/schema/*.test.ts`.
 
@@ -637,7 +664,7 @@ See the table in §5.2. Layout: `tests/*.test.ts`, `tests/engine/*.test.ts`, `te
 | Comparisons | 21 across 6 categories, 14 chart kinds |
 | Chart kinds supported by `ChartCanvas` | 18 (`KIND_LABEL`, `indicators.ts:284-303`) |
 | App routes (static export) | 6 (`/`, `/_not-found`, `/ingest`, `/report`, `/review`, `/viz`) |
-| Test suite | 17 files / 201 tests, all passing as of 2026-10-02 |
-| Quality gates | tsc clean · eslint 9 clean · 17/201 tests pass · `next build` → `out/`, 6 routes · `check-offline` OK (as of 2026-10-02) |
+| Test suite | 19 files / 212 tests, all passing as of 2026-10-02 |
+| Quality gates | tsc clean · eslint 9 clean · 19/212 tests pass · `next build` → `out/`, 6 routes · `check-offline` OK (as of 2026-10-02) |
 | IDB databases | `vhsnd-pipeline` v2 (6 stores) + `pipeline-crypto` |
-| HEAD | `e754df9` — "count Yes for boolean indicators and show the numbers behind every chart hover" |
+| HEAD | `f5a0324` — "docs: recite line numbers, counts and HEAD after the indicator/tooltip fixes" |
