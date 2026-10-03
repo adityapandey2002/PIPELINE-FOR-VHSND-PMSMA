@@ -2,6 +2,7 @@
   "name": "vhsnd-pipeline",
   "version": "0.1.0",
   "private": true,
+  "description": "Offline browser pipeline that parses a VHSND supervision export, finds and adjudicates contradictions, charts 21 indicators and 21 comparisons, and emits a PPTX deck, DOCX letter, cleaned CSV and audit trail - all on-device, with no server.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

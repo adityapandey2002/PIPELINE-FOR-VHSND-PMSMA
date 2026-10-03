@@ -1,9 +1,13 @@
 # VHSND & PMSMA Pipeline — Codemap & Reference
 
 **Last updated:** 2026-10-02
-**Source of truth:** working tree at commit `f5a0324` (branch `main`) — every statement below was read from
+**Source of truth:** working tree at commit `7ba9745` (branch `main`) — every statement below was read from
 source, from the test suite, or measured by executing the repo's own code. Anything that could **not**
 be verified is called out explicitly (see §6).
+
+**Companion documents:** `README.md` (product overview + technical deep dive) · `docs/DATA-MODEL.md`
+(registry, schema, rules, indicators, comparisons, extension recipes) · `docs/DEVELOPMENT.md` (setup,
+gates, scripts, how to add things). This file stays the line-cited codemap.
 
 **What this document covers:** §1 purpose · §2 architecture · §3 stage-by-stage pipeline with
 `file:line` cites · §4 UI map · §5 testing & quality gates · §6 known limitations (incl. the RESOLVED
@@ -147,13 +151,13 @@ artifact can be served from a file share with no server.
    next (`:57-61`): `auto` (the default) consults `detectTransposed`, while `"flipped"` / `"upright"`
    are the user's manual override from the ingest screen. `resolveLabel` prefers a saved manual match
    over the normalizer (`:59`).
-4. **Orientation.** `detectTransposed` (`src/schema/engine/normalize.ts:295-317`) only fires on a tall
+4. **Orientation.** `detectTransposed` (`src/schema/engine/normalize.ts:322-344`) only fires on a tall
    sheet — ≥ 30 rows and at least twice as many rows as columns (`TRANSPOSE_MIN_ROWS`/guards,
-   `:267-272,301-303`) — and needs two independent signals: ≥ 60 % of the first 80 column-A cells must
-   resolve to known field codes (`:315`), while the top row after its first cell must resolve to known
-   codes in **under** 60 % of cases (`:316`), i.e. that row looks like values, not titles. `transposeAoa`
-   (`:275-288`) then swaps rows and columns, and the flip is recorded as
-   `transposed: true` on `ParsedSheet` (`:49`, returned at `:503`).
+   `:294-299,328-330`) — and needs two independent signals: ≥ 60 % of the first 80 column-A cells must
+   resolve to known field codes (`:342`), while the top row after its first cell must resolve to known
+   codes in **under** 60 % of cases (`:343`), i.e. that row looks like values, not titles. `transposeAoa`
+   (`:302-311`) then swaps rows and columns, and the flip is recorded as
+   `transposed: true` on `ParsedSheet` (`:63`, returned at `:589`).
 5. `detectHeaderLayout` (`src/schema/engine/normalize.ts:355-408`) decides the header shape. It first
    **scans rows 1–3 for the form's code row** (`CODE_ROW_SCAN_DEPTH`, `:288`) — a row qualifies when
    ≥ 90 % of its non-empty cells are known codes, matched case-insensitively (`CODE_ROW_THRESHOLD`,
@@ -196,7 +200,7 @@ artifact can be served from a file share with no server.
    (`idb.ts:89-91`). The ingest screen remembers the dataset *it* created and deletes it when the file
    is read again, so one file does not pile up as several copies (`ingest/page.tsx:86-87,130-132`).
 9. `runValidate` then stores the validation cache (`ingest/page.tsx:88-99`), the page computes
-   `columnsRecognized` / `missingCritical` (`:99-103`) and asks whether this file was imported before
+   `columnsRecognized` / `missingCritical` (`:100-104`) and asks whether this file was imported before
    (`:119-129`, card at `:278-302`) — decisions are per import, they never follow a re-import.
 10. **Post-import cards.** Three notices can follow the success card (`:234-258`):
     * **Orientation** (`:260-276`) — shown when the sheet was read flipped or the user overrode it.
@@ -206,7 +210,7 @@ artifact can be served from a file share with no server.
       `--info`; the warning-coloured cards use `--warning` / `--warning-soft` (`globals.css:14-15`) —
       there is no `--warn` token in the stylesheet.
     * **Collapsed columns** (`:304-322`) — repeated titles that could not be told apart. The paragraph
-      under the heading comes from `collapsedNotice` (`src/lib/ingestCopy.ts:10-24`), keyed on each
+      under the heading comes from `collapsedNotice` (`src/lib/ingestCopy.ts:11-24`), keyed on each
       group's `cause` (`:311`), so the screen blames the export only when the file itself repeats a
       code it owns and says "resolved onto the same field" when the merge was ours. The old copy chose
       its wording from `headerRows` alone and therefore blamed the file either way.
@@ -258,7 +262,7 @@ The reference date is passed as `refDate: null` from the UI so the engine comput
 
 `deriveCleanRows` (`src/lib/derive.ts:40-66`) maps every row through `applyResolution`
 (`src/contracts/resolution.ts:30-55`): pending/keep → kept as-is, drop → dropped, override → merged and
-re-coerced (`buildFieldCoercer`, `normalize.ts:161-186`, cached per schema version, `derive.ts:24-38`).
+re-coerced (`buildFieldCoercer`, `normalize.ts:175-198`, cached per schema version, `derive.ts:24-38`).
 Rows kept but still carrying an unresolved error are reported as `pending` (`derive.ts:50,63`) — they
 still flow into charts and reports until decided (`review/page.tsx:217-226`).
 
@@ -472,7 +476,7 @@ outside the repo (no source file was touched):
 
 | Fixture | Header layout | Rows | Columns present / recognised | Findings |
 |---|---|---:|---|---|
-| `sample-data/DATASET_1.xlsx` (sheet 15 × 91) | single label row (`headerRow: 1`) | 14 | 91 present (incl. 5 titles the schema cannot place), **86 of 253 recognised**; `SubmissionDate`, `starttime`, `endtime`, `B8` absent → `refDate = null` | **0** violations — every cross-field rule is inapplicable; **5 unmatched header titles** (the mapping card); comparisons **7 full / 14 partial** |
+| `sample-data/DATASET_1.xlsx` (sheet 15 × 91) | single label row (`headerRow: 1`) | 14 | 91 label columns → **90 present**, **90 of 253 recognised**; `SubmissionDate`, `starttime`, `endtime`, `B8` absent → `refDate = null` | **0** violations — every cross-field rule is inapplicable; **0 unmatched titles**; **1 collapsed group** (`resolved-title`: 2 titles merged onto `H1PB2`); comparisons **7 full / 14 partial** |
 | `sample-data/DATA_EX_SHAPE.csv` | two-row (`headerRow: 2`) | 3 | 251 of 253 (`G1_D`, `remarks` absent) | 0 violations |
 | `sample-data/vhsnd-sample.xlsx` | single code row (`headerRow: 1`) | 160 | 252 of 253 (`G1_D` absent) | 320 errors / 3146 warnings / 307 infos across 26 distinct codes |
 
@@ -481,17 +485,18 @@ harness today:
 
 | Export | Sheet | Read as | Result |
 |---|---|---|---|
-| `DATA_EXAMPLE.csv` | 252 × 7, fields down column A | flipped (`transposed: true`), **5 rows**, `headerRow: 2` | **20 of 21 comparisons full** — only `C11_1` is absent from that file |
-| `DATASET.xlsx` | 24 × 252 | upright, `headerRow: 2` | **21 of 21 full**, 0 errors, 0 warnings |
+| `DATA_EXAMPLE.csv` | 252 × 7, fields down column A | flipped (`transposed: true`), **5 rows**, `headerRow: 2` | **21 of 21 full** — 251 of 253 present, so the only columns the file lacks are `G1_D` and `remarks` (no comparison needs them); `C11_1` is in the file but blank in all 5 rows |
+| `DATASET.xlsx` | 24 × 252 | upright, `headerRow: 2`, **22 rows** | **21 of 21 full**; 251 of 253 present (`G1_D`, `remarks` absent), 0 collapsed groups, 0 unmapped headers, 0 errors, 0 warnings |
 | `VHSND_DATASET.xlsx` | 696 × 252, three header rows (Hindi labels / English labels / codes) | `headerRow: 3`, **693 rows** | **252 of 253 recognised** (was 210 before the code-row scan), `collapsedColumns` empty (was 27 groups), `unmappedHeaders` absent (was 42), **21 of 21 comparisons full** |
 
 The `VHSND_DATASET.xlsx` row is the regression that motivated the code-row scan: only row 3 of its
 header carries codes, and reading rows 1–2 as labels instead collapsed the 11 `*_SP` columns, sent
 stray Hindi titles to `H13`, and turned the code row itself into a 694th data row.
 
-The `DATASET_1.xlsx` partials are partial because those columns really are not in the file, and its
-5 unmatched titles are what the ingest mapping card exists for — the mapping card is §3 Stage 1, the
-withheld chart is §3 Stage 6; neither is drawn as if it were complete.
+The `DATASET_1.xlsx` partials are partial because those columns really are not in the file; its one
+repeated title is now recorded as a collapsed group instead of reaching the mapping card, which
+reports no unmatched titles. The mapping card is §3 Stage 1, the withheld chart is §3 Stage 6;
+neither is drawn as if it were complete.
 
 Regenerate fixtures with `node scripts/make-sample-data.cjs` (→ `vhsnd-sample.xlsx`) and
 `node scripts/make-shape-sample.mjs` (→ `DATA_EX_SHAPE.csv`).
@@ -545,7 +550,7 @@ line.
 
 ### 6.3 Partial-export "silence" (measured, and a real risk)
 
-With a label-headed file such as `DATASET_1.xlsx` the parser recognises only **86 of 253** columns and
+With a label-headed file such as `DATASET_1.xlsx` the parser recognises only **90 of 253** columns and
 `SubmissionDate`/`B8` are missing, so `referenceDate` returns `null` (`validate.ts:32-39`) and the whole
 cross-field rule set reports **zero findings** while the UI still says "0 errors". The UI does surface
 `missingCritical` (`ingest/page.tsx:100-104,244-248`) and the coverage copy
@@ -563,7 +568,7 @@ than it really is.
 
 > **Unverified figure:** a previously circulated claim of "~43 of 253 single-header columns, so date
 > rules go silent" **could not be reproduced** against the fixtures in this repo — the measured number
-> for the single-header fixture is 86 (and the silence mechanism above is confirmed). Treat "~43" as
+> for the single-header fixture is 90 (and the silence mechanism above is confirmed). Treat "~43" as
 > unverified until a file is supplied that produces it.
 
 ### 6.4 Operational caveats
@@ -588,7 +593,7 @@ than it really is.
 
 ## 7. File inventory
 
-### 7.1 Source (`src/`, 49 files)
+### 7.1 Source (`src/`, 50 files)
 
 Parenthesised numbers are total lines in the file (blank lines included).
 
@@ -647,8 +652,9 @@ See the table in §5.2. Layout: `tests/*.test.ts`, `tests/engine/*.test.ts`, `te
 
 `package.json` (scripts `:5-18`, deps `:19-32`) · `next.config.ts` · `tsconfig.json` · `vitest.config.ts` ·
 `eslint.config.mjs` · `package-lock.json` · `AGENTS.md` (nextjs-agent-rules block, re-added by
-`next dev`) · `CLAUDE.md` (just `@AGENTS.md`) · `README.md` (UTF-16 create-next-app boilerplate) ·
-`.gitignore` (ignores `/.next/`, `/out/`, `/node_modules`) · `docs/PIPELINE.md` (this file).
+`next dev`) · `CLAUDE.md` (just `@AGENTS.md`) · `README.md` (product overview, plain-language and
+technical) · `.gitignore` (ignores `/.next/`, `/out/`, `/node_modules`) · `docs/PIPELINE.md` (this file) ·
+`docs/DATA-MODEL.md` (schema reference + recipes) · `docs/DEVELOPMENT.md` (contributor guide).
 
 ---
 
@@ -667,4 +673,4 @@ See the table in §5.2. Layout: `tests/*.test.ts`, `tests/engine/*.test.ts`, `te
 | Test suite | 19 files / 212 tests, all passing as of 2026-10-02 |
 | Quality gates | tsc clean · eslint 9 clean · 19/212 tests pass · `next build` → `out/`, 6 routes · `check-offline` OK (as of 2026-10-02) |
 | IDB databases | `vhsnd-pipeline` v2 (6 stores) + `pipeline-crypto` |
-| HEAD | `f5a0324` — "docs: recite line numbers, counts and HEAD after the indicator/tooltip fixes" |
+| HEAD | `7ba9745` — "read the form's own code row wherever it sits, and stop blaming the export for our own merges" |

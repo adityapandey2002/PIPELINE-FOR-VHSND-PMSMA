@@ -39,3 +39,65 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# vendored dependencies — MUST stay tracked.
+# package.json resolves "xlsx" as file:vendor/xlsx-0.20.3.tgz, so this tarball is
+# required for `npm install`. Never blanket-ignore archives; the negation below
+# fails loudly if someone adds a rule that would swallow it.
+!vendor/
+!vendor/**
+
+# windows / os noise (this checkout lives on Windows)
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# editors & ides
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+.project
+.settings/
+
+# logs & runtime noise
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.pid
+*.seed
+
+# temp / scratch output
+tmp/
+temp/
+.tmp/
+.cache/
+*.tmp
+*.bak
+*.orig
+
+# local env overrides (the app reads no env vars today; ignore them if added)
+.env*.local
+*.local
+
+# platform build caches
+.vite/
+.turbo/
+.eslintcache
+.parcel-cache/
+
+# test & analysis artifacts beyond coverage/
+junit.xml
+test-results/
+playwright-report/
+blob-report/
+.playwright/
