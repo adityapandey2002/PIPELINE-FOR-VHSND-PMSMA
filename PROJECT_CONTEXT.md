@@ -206,8 +206,9 @@ flowchart LR
 ### 3.3 Declared but unused
 
 `zod@^4.6.5` is a declared dependency (`package.json`) but is **never imported** anywhere in `src/`,
-`tests/` or `scripts/`. The schema system uses its own DSL (`src/schema/dsl.ts`). It is also a transitive
-dependency of `docx-templates`. See §16.
+`tests/` or `scripts/`. The schema system uses its own DSL (`src/schema/dsl.ts`). Its only dependents in
+the lockfile are `eslint-plugin-react-hooks` and `zod-validation-error`, both **dev-side** — so
+removing it from `dependencies` is safe for both runtime and lint. See §16.
 
 ---
 
@@ -1254,8 +1255,10 @@ strange.
 | D2 | **`anc-pnc-bias` declares a chart kind its payload cannot drive** | returns `kind: "grouped-bar"` with a **single** `seriesKeys` entry (`src/lib/comparisons.ts:452-459`), but `ChartCanvas` only takes the grouped branch when `seriesKeys.length > 1` (`src/components/ChartCanvas.tsx:256`) | Silently falls through to a default single-series bar chart over `series.points`, discarding `extra.groups`. The other grouped-bar comparison (`gdm-bottleneck`) passes two series keys and is correct |
 | D3 | **Comparison numbering no longer follows category order** | #21 is filed under `COMPARISON_CATEGORIES[1]` (`src/lib/comparisons.ts:1059`), so the "2 · Service & Infrastructure Readiness" optgroup lists 4, 5, 6, 7 **and** 21, while other categories run 1–3, 8–20 | The UI implies an ordering that the data does not have |
 | D4 | **Comparison mode feeds two stub statistics to the insight tiles** | `mkSeries` hard-codes `dateSpanDays: 0` and `numericShape: "flat"` (`src/lib/comparisons.ts:239-257`), and `vizInsights` reads them (`src/app/viz/page.tsx:91-94,215-216`) | In comparison mode, "Date span" and "Shape" are **not measurements of the dataset** — they are placeholders presented as numbers |
-| D5 | **`zod` is declared but never imported** | `package.json` only; no import in `src/`, `tests/` or `scripts/` | Dead dependency (also transitively required by `docx-templates`, so removal needs care) |
+| D5 | **`zod` is declared but never imported** | `package.json` only; no import in `src/`, `tests/` or `scripts/` | Dead runtime dependency. Its only lockfile dependents are `eslint-plugin-react-hooks` and `zod-validation-error`, both dev-side, so removal is safe |
 | D6 | **Hard-coded path in a script** | `scripts/make-shape-sample.mjs` | Fails outside one machine's directory layout |
+| D7 | **Unhandled schema-resolution failure in the row drawer** | `src/components/RowDrawer.tsx:37` calls `getDatasetSchema` inside a `useMemo` with no `try/catch`, and **no `error.tsx` boundary exists anywhere in `src/`** | Under the identical condition that `derive.ts:31-36` guards, the drawer throws during render and React unmounts the tree — a blank page rather than a message. This is more severe than the documented `derive.ts` fallback |
+| D8 | **`jszip` is used directly but never declared** | `scripts/make-default-templates.mjs` and `tests/docx-template.test.ts` both import it; `package.json` does not list it | It resolves only by npm hoisting, so the scripts break the moment the tree is installed with a different layout or a stricter package manager |
 
 ### 16.3 Architectural risks (verified in code, not reproduced in a browser)
 

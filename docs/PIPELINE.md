@@ -546,7 +546,7 @@ line.
 | **PMSMA is not implemented** — only `vhsnd` | `src/schema/index.ts:5`; `src/contracts/dataset.ts:13` declares the type only |
 | **Re-import strands decisions** — a new import always mints a new dataset id | `src/stores/datasetStore.ts:42`; surfaced to the user at `ingest/page.tsx:278-302`. A re-read *on the ingest screen* now deletes the dataset that screen created earlier (`ingest/page.tsx:86-87,132`), so the pile-up only happens across separate visits |
 | Header collapse on single-header files — repeated titles read as one column | `normalize.ts:508-535`, warning card `ingest/page.tsx:304-322`. Its `cause` now says whether the shared code came from the file's own code row (`sheet-code`) or from our title resolution (`resolved-title`), and the card copy follows it |
-| `zod` is a declared dependency but is never imported anywhere in `src/`, `tests/` or `scripts/` | grep: only `package.json:30` + lockfile (also a transitive of `docx-templates`) |
+| `zod` is a declared dependency but is never imported anywhere in `src/`, `tests/` or `scripts/` | grep: only `package.json` + lockfile (its only dependents are the dev-side `eslint-plugin-react-hooks` and `zod-validation-error`, so removal is safe) |
 
 ### 6.3 Partial-export "silence" (measured, and a real risk)
 
